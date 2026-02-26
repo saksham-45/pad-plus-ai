@@ -1,0 +1,52 @@
+# PAD+ AI - Render Blueprint
+# https://render.com/docs/blueprint-spec
+
+services:
+  # Backend - Web Service
+  - type: web
+    name: padplus-ai-backend
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: |
+      python -m pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: OPENROUTER_ENABLED
+        value: "true"
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: "google/gemma-7b-it"
+      - key: GIGACHAT_ENABLED
+        value: "false"
+      - key: DEBUG
+        value: "false"
+      - key: RENDER
+        value: "true"
+      - key: LOG_LEVEL
+        value: "info"
+      - key: DATABASE_URL
+        value: "sqlite:///./data/memory.db"
+    disk:
+      name: padplus-data
+      mountPath: /opt/render/project/data
+      sizeGB: 1
+
+  # Frontend - Static Site
+  - type: web
+    name: padplus-ai-frontend
+    runtime: static
+    region: frankfurt
+    plan: free
+    buildCommand: |
+      cd frontend
+      npm install
+      npm run build
+    envVars:
+      - key: VITE_API_URL
+        value: "https://padplus-ai-backend.onrender.com"
