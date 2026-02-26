@@ -233,57 +233,117 @@ HYGIENE_SIMILARITY_THRESHOLD=0.85
 
 ```bash
 # Все тесты
-python -m pytest tests/
+pytest tests/
 
-# Отдельные модули
-python tests/test_all.py
-python tests/test_pipeline.py
-python tests/test_persona.py
-python tests/test_hygiene.py
-python tests/test_health_monitor.py
-python tests/test_meta_controller.py
-python tests/test_roots.py
+# Unit тесты
+pytest tests/unit/
+
+# Интеграционные тесты
+pytest tests/integration/
+
+# С маркерами
+pytest -m integration
+pytest -m unit
+pytest -m rag
+pytest -m autonomy
+
+# Основные тесты
+python -m pytest tests/test_all_components.py
+python -m pytest tests/test_pipeline.py
+python -m pytest tests/test_persona.py
+python -m pytest tests/test_hygiene.py
 ```
 
-## 🔌 API Endpoints (80+)
+## 🔌 API Endpoints (145+)
 
 ### Основные
 | Endpoint | Описание |
 |----------|----------|
-| `POST /api/v1/chat` | Чат |
+| `POST /api/v1/chat` | Чат с AI |
 | `POST /api/v1/chat/stream` | Потоковый чат (SSE) |
 | `GET /api/v1/mind-state` | Полное состояние системы |
+| `GET /api/v1/` | Корневой эндпоинт API |
 
-### Память
+### Память и RAG
 | Endpoint | Описание |
 |----------|----------|
 | `GET /api/v1/rag/stats` | Статистика RAG |
+| `GET /api/v1/rag/topics` | Статистика по темам |
+| `GET /api/v1/rag/entities` | Индекс сущностей |
+| `GET /api/v1/rag/recent` | Недавние диалоги |
 | `POST /api/v1/rag/search` | Семантический поиск |
 | `POST /api/v1/rag/hybrid` | Гибридный поиск |
+
+### Факты и знания
+| Endpoint | Описание |
+|----------|----------|
 | `GET /api/v1/facts/stats` | Статистика фактов |
 | `POST /api/v1/facts/search` | Поиск фактов |
-| `GET /api/v1/roots` | Корневые знания |
+| `GET /api/v1/facts/contradictions` | Противоречия в фактах |
+| `GET /api/v1/knowledge/graph` | Граф знаний |
+
+### Корневые знания
+| Endpoint | Описание |
+|----------|----------|
+| `GET /api/v1/roots` | Все корневые знания |
+| `GET /api/v1/roots/categories` | Категории корневых знаний |
+| `GET /api/v1/roots/philosophy` | Философские принципы |
+| `GET /api/v1/roots/ethics` | Этические принципы |
+| `GET /api/v1/roots/identity` | Факты об идентичности |
+| `GET /api/v1/roots/context` | Контекст для LLM |
 
 ### Эмоции и Persona
 | Endpoint | Описание |
 |----------|----------|
-| `GET /api/v1/emotion/state` | Эмоции PAD+ |
+| `GET /api/v1/emotion/state` | Текущее эмоциональное состояние |
+| `GET /api/v1/persona/stats` | Статистика персоны |
 | `GET /api/v1/persona/traits` | Черты характера |
-| `POST /api/v1/persona/adjust` | Корректировка черты |
+| `GET /api/v1/persona/values` | Ценности и принципы |
+| `GET /api/v1/persona/reflections` | Саморефлексии |
+| `GET /api/v1/persona/context` | Контекст личности |
 
-### Автономность
+### Автономия
 | Endpoint | Описание |
 |----------|----------|
-| `GET /api/v1/autonomy/status` | Статус автономии |
-| `POST /api/v1/autonomy/reflect` | Саморефлексия |
-| `GET /api/v1/meta/stats` | Мета-когниция |
+| `GET /api/v1/autonomy/status` | Статус автономных процессов |
+| `GET /api/v1/impulse/status` | Статус импульса |
 
-### Аналитика и Здоровье
+### Аналитика
 | Endpoint | Описание |
 |----------|----------|
-| `GET /api/v1/analytics/report` | Аналитика |
-| `GET /api/v1/health` | Когнитивное здоровье |
-| `POST /api/v1/feedback` | Обратная связь |
+| `GET /api/v1/analytics/dashboard` | Метрики дашборда |
+| `GET /api/v1/analytics/activity` | Граф активностей |
+| `GET /api/v1/analytics/topics` | Статистика по темам |
+| `GET /api/v1/analytics/report` | Полный отчёт аналитики |
+
+### Здоровье и мониторинг
+| Endpoint | Описание |
+|----------|----------|
+| `GET /api/v1/health` | Оценка когнитивного здоровья |
+| `GET /api/v1/health/report` | Текстовый отчёт о здоровье |
+| `GET /api/v1/health/issues` | Проблемы здоровья |
+| `GET /api/v1/health/recommendations` | Рекомендации |
+| `GET /api/v1/hygiene/stats` | Статистика гигиены памяти |
+| `GET /api/v1/pipeline/stats` | Статистика пайплайна |
+
+### Мета-когниция и события
+| Endpoint | Описание |
+|----------|----------|
+| `GET /api/v1/meta/stats` | Мета-когнитивная статистика |
+| `GET /api/v1/events/history` | История событий |
+| `GET /api/v1/events/stats` | Статистика событий |
+
+### Безопасность и верификация
+| Endpoint | Описание |
+|----------|----------|
+| `GET /api/v1/safety/stats` | Статистика безопасности |
+| `GET /api/v1/truth/stats` | Статистика верификации |
+
+### WebSocket
+| Endpoint | Описание |
+|----------|----------|
+| `WS /ws` | Real-time обновления |
+| `GET /logs/stream` | Поток логов (SSE) |
 
 Полная документация: http://localhost:8000/docs
 
