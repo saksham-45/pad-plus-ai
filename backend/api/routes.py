@@ -584,15 +584,28 @@ class RAGSearchRequest(BaseModel):
 @router.get("/rag/stats")
 async def rag_stats():
     """Статистика RAG памяти v3.0"""
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from memory.rag import get_rag
-    
-    rag = get_rag()
-    stats = rag.get_stats()
-    stats["timestamp"] = datetime.now().isoformat()
-    return stats
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from memory.rag import get_rag
+        
+        rag = get_rag()
+        stats = rag.get_stats()
+        stats["timestamp"] = datetime.now().isoformat()
+        return stats
+    except Exception as e:
+        # Логируем ошибку
+        import logging
+        logger = logging.getLogger("padplus")
+        logger.error(f"Error in /rag/stats: {str(e)}")
+        
+        # Возвращаем понятный ответ
+        return {
+            "error": str(e),
+            "status": "failed",
+            "timestamp": datetime.now().isoformat()
+        }
 
 
 @router.get("/rag/topics")

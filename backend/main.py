@@ -85,13 +85,14 @@ app = FastAPI(
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 allow_origins = [
     "http://localhost:5173",
-    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5173", 
     "http://localhost:3000",
     frontend_url
 ]
 # В production добавляем URL из переменной окружения
 if os.getenv("RENDER"):
-    allow_origins.append("*.onrender.com")
+    allow_origins.append("https://padplus-ai-frontend.onrender.com")
+    allow_origins.append("https://padplus-ai-backend.onrender.com")
 
 app.add_middleware(
     CORSMiddleware,
