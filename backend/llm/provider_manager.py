@@ -163,7 +163,7 @@ class OpenRouterProvider(BaseProvider):
         # Поддержка автовыбора бесплатной модели
         model = self.model
         if model.lower() == "free":
-            model = "google/gemma-2-9b-it:free"  # Реальная бесплатная модель
+            model = "google/gemma-7b-it"  # Рабочая бесплатная модель
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",

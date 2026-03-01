@@ -212,7 +212,7 @@ const Settings = ({ onClose }) => {
                     value={providers.openrouter?.model || 'openrouter/free'}
                     onChange={(e) => handleModelChange(e.target.value)}
                   >
-                    <option value="openrouter/free">OpenRouter Free (Google Gemma 2)</option>
+                    <option value="openrouter/free">OpenRouter Free (Google Gemma 7B)</option>
                     <option value="google/gemma-7b-it">Google Gemma 7B (бесплатно)</option>
                     <option value="google/gemma-2-9b-it">Google Gemma 2 9B</option>
                     <option value="meta-llama/llama-3-8b-instruct">Llama 3 8B</option>
