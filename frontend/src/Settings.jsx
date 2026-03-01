@@ -5,7 +5,7 @@ const Settings = ({ onClose }) => {
   const [providers, setProviders] = useState({
     gigachat: { enabled: false, has_key: false },
     gemini: { enabled: false, has_key: false },
-    openrouter: { enabled: false, has_key: false, model: 'google/gemma-7b-it' }
+    openrouter: { enabled: false, has_key: false, model: 'openrouter/free' }
   });
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -123,7 +123,7 @@ const Settings = ({ onClose }) => {
           openrouter: {
             enabled: providers.openrouter?.enabled || false,
             api_key: providers.openrouter?.api_key || null,
-            model: providers.openrouter?.model || 'google/gemma-7b-it'
+            model: providers.openrouter?.model || 'openrouter/free'
           }
         })
       });
@@ -209,9 +209,10 @@ const Settings = ({ onClose }) => {
                 <div className="form-group">
                   <label>Модель</label>
                   <select
-                    value={providers.openrouter?.model || 'google/gemma-7b-it'}
+                    value={providers.openrouter?.model || 'openrouter/free'}
                     onChange={(e) => handleModelChange(e.target.value)}
                   >
+                    <option value="openrouter/free">OpenRouter Free (автовыбор)</option>
                     <option value="google/gemma-7b-it">Google Gemma 7B (бесплатно)</option>
                     <option value="google/gemma-2-9b-it">Google Gemma 2 9B</option>
                     <option value="meta-llama/llama-3-8b-instruct">Llama 3 8B</option>

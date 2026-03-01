@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional, List, Any, Dict
 import json
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -3309,7 +3309,7 @@ async def styles_context(style_name: str):
 # === LLM PROVIDER MANAGEMENT ENDPOINTS ===
 
 @router.get("/llm/providers")
-async def llm_providers(session_id: str = None):
+async def llm_providers(session_id: Optional[str] = Query(None)):
     """Получить список провайдеров и их статус"""
     import sys
     from pathlib import Path
@@ -3375,7 +3375,7 @@ async def llm_models(provider: str = "openrouter"):
 
 
 @router.post("/llm/config")
-async def llm_config_update(config: LLMConfig, session_id: str = None):
+async def llm_config_update(config: LLMConfig, session_id: Optional[str] = Query(None)):
     """Обновить конфигурацию провайдеров"""
     import sys
     from pathlib import Path
@@ -3499,7 +3499,7 @@ async def llm_health():
 
 
 @router.post("/llm/test/{provider}")
-async def llm_test_provider(provider: str, session_id: str = None):
+async def llm_test_provider(provider: str, session_id: Optional[str] = Query(None)):
     """Тестирование провайдера"""
     import sys
     from pathlib import Path
