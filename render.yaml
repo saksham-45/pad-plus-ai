@@ -32,7 +32,11 @@ services:
         value: "info"
       - key: DATABASE_URL
         value: "postgresql://postgres:TiMuPom13Q5OfKBi@db.hgjbjccpeirwrabbcjhr.supabase.co:5432/postgres"
-    # Убрана секция disk - используем внешнюю БД Supabase
+      # Новые переменные для сессионной системы
+      - key: SESSION_TTL_HOURS
+        value: "24"
+      - key: ENABLE_SESSION_MANAGEMENT
+        value: "true"
 
   # Frontend - Static Site
   - type: web
@@ -46,3 +50,7 @@ services:
     envVars:
       - key: VITE_API_URL
         value: "https://padplus-ai-backend.onrender.com"
+      - key: VITE_APP_TITLE
+        value: "PAD+ AI v3.5"
+      - key: VITE_SESSION_ENABLED
+        value: "true"
