@@ -355,6 +355,10 @@ class ProviderManager:
         # Используем fallback
         return await self.fallback.generate(prompt, context)
     
+    def has_active_providers(self) -> bool:
+        """Проверяет, есть ли активные провайдеры"""
+        return any(p.enabled for p in self.providers.values())
+    
     def get_status(self) -> dict:
         """Возвращает статус провайдеров"""
         return {
