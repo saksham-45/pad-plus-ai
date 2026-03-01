@@ -337,6 +337,18 @@ class PipelineExecutor:
 Сомневайся в утверждениях. Проверяй факты.
 """
 
+            # === 7.2 GENERATE RESPONSE ===
+            session_manager = get_session_manager()
+            gen_result = await session_manager.generate(
+                session_id or "system", 
+                user_message, 
+                full_context
+            )
+            
+            result.response = gen_result.text
+            result.provider = gen_result.provider
+            result.confidence = gen_result.confidence
+
             # Определяем значимость эпизода
             significance = 0.5
             if result.rag_used:

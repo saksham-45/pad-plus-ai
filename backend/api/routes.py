@@ -94,7 +94,7 @@ async def api_root():
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest, headers: Dict[str, str] = Header(None)):
+async def chat(request: ChatRequest, x_session_id: Optional[str] = Header(None, alias="X-Session-ID")):
     """
     Чат через единый PipelineExecutor
     
@@ -105,8 +105,8 @@ async def chat(request: ChatRequest, headers: Dict[str, str] = Header(None)):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent))
     
-    # Получаем session_id из заголовков
-    session_id = headers.get("x-session-id") if headers else None
+    # Используем session_id из заголовка
+    session_id = x_session_id
     
     from core.pipeline import get_pipeline
     from core.anti_directive import ANTI_DIRECTIVE
