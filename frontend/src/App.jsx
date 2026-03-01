@@ -5,6 +5,16 @@ import Settings from './Settings'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/^http/, 'ws') + '/ws'
 
+// Генерация или получение session_id
+const getSessionId = () => {
+  let sessionId = localStorage.getItem('session_id')
+  if (!sessionId) {
+    sessionId = 'session_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now()
+    localStorage.setItem('session_id', sessionId)
+  }
+  return sessionId
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('chat')
   const [prompt, setPrompt] = useState('')
@@ -505,9 +515,13 @@ function App() {
     setMessages(prev => [...prev, userMessage])
     
     try {
+      const sessionId = getSessionId()
       const res = await fetch(`${API_URL}/api/v1/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-Session-ID': sessionId
+        },
         body: JSON.stringify({ prompt })
       })
       const data = await res.json()

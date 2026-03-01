@@ -3,10 +3,10 @@ API Routes — Эндпоинты NeuroMind AI
 """
 
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -94,7 +94,7 @@ async def api_root():
 
 
 @router.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, headers: Dict[str, str] = Header(None)):
     """
     Чат через единый PipelineExecutor
     
@@ -105,11 +105,57 @@ async def chat(request: ChatRequest):
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent))
     
+    # Получаем session_id из заголовков
+    session_id = headers.get("x-session-id") if headers else None
+    
     from core.pipeline import get_pipeline
     from core.anti_directive import ANTI_DIRECTIVE
     from analytics.metrics import get_analytics
     
-    # Проверяем, нужен ли fallback
+    # Проверяем, нужны ли пользовательские провайдеры
+    if session_id:
+        from llm.session_provider_manager import get_session_manager
+        session_manager = get_session_manager()
+        
+        # Проверяем, есть ли у пользователя активные провайдеры
+        user_manager = session_manager.create_user_manager(session_id)
+        if not user_manager.has_active_providers():
+            # Нет пользовательских провайдеров, используем fallback
+            from core.config_manager import logger
+            logger.info(f"Используем fallback-ответ для сессии {session_id} (нет активных провайдеров)")
+            fallback_response = get_fallback_response(request.prompt)
+            
+            return {
+                "prompt": request.prompt,
+                "response": fallback_response.content,
+                "anti_directive": ANTI_DIRECTIVE.text,
+                "timestamp": datetime.now().isoformat(),
+                "confidence": fallback_response.confidence,
+                "provider": fallback_response.provider,
+                "layer": "fallback",
+                "style": fallback_response.style,
+                "session_id": session_id,
+                # Поля пайплайна (fallback)
+                "intent": "general",
+                "safety": {
+                    "passed": True,
+                    "warning": None
+                },
+                "truth": {
+                    "confidence": fallback_response.confidence,
+                    "claims_verified": 0
+                },
+                "emotion_style": fallback_response.style,
+                "rag_used": False,
+                "facts_used": False,
+                "execution_time_ms": 0,
+                "success": True,
+                "errors": [],
+                "raw_llm_response": None,
+                "llm_metadata": None
+            }
+    
+    # Проверяем, нужен ли fallback (системная проверка)
     if is_fallback_needed():
         from core.config_manager import logger
         logger.info("Используем fallback-ответ (нет активных провайдеров)")
@@ -143,6 +189,11 @@ async def chat(request: ChatRequest):
             "raw_llm_response": None,
             "llm_metadata": None
         }
+        
+        if session_id:
+            response["session_id"] = session_id
+        
+        return response
     else:
         # Получаем пайплайн
         pipeline = get_pipeline()
@@ -150,7 +201,8 @@ async def chat(request: ChatRequest):
         # Выполняем через нервную систему
         result = await pipeline.execute(
             user_message=request.prompt,
-            context=request.context
+            context=request.context,
+            session_id=session_id
         )
         
         # Аналитика
@@ -3257,21 +3309,34 @@ async def styles_context(style_name: str):
 # === LLM PROVIDER MANAGEMENT ENDPOINTS ===
 
 @router.get("/llm/providers")
-async def llm_providers():
+async def llm_providers(session_id: str = None):
     """Получить список провайдеров и их статус"""
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from llm.provider_manager import get_provider_manager
+    from llm.session_provider_manager import get_session_manager
     
-    manager = get_provider_manager()
-    providers = manager.get_providers_status()
+    session_manager = get_session_manager()
     
-    return {
-        "providers": providers,
-        "active_provider": manager.get_active_provider_name(),
-        "timestamp": datetime.now().isoformat()
-    }
+    if session_id:
+        # Получаем провайдеров пользователя
+        providers_status = session_manager.get_providers_status(session_id)
+        return {
+            "providers": providers_status,
+            "session_id": session_id,
+            "timestamp": datetime.now().isoformat()
+        }
+    else:
+        # Получаем системные провайдеры
+        from llm.provider_manager import get_provider_manager
+        manager = get_provider_manager()
+        providers = manager.get_providers_status()
+        
+        return {
+            "providers": providers,
+            "active_provider": manager.get_active_provider_name(),
+            "timestamp": datetime.now().isoformat()
+        }
 
 
 @router.get("/llm/models")
@@ -3310,63 +3375,109 @@ async def llm_models(provider: str = "openrouter"):
 
 
 @router.post("/llm/config")
-async def llm_config_update(config: LLMConfig):
+async def llm_config_update(config: LLMConfig, session_id: str = None):
     """Обновить конфигурацию провайдеров"""
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from llm.provider_manager import get_provider_manager
-    from core.config_manager import get_config
+    from llm.session_provider_manager import get_session_manager
     
-    manager = get_provider_manager()
-    config_manager = get_config()
+    session_manager = get_session_manager()
     
-    # Обновляем конфигурацию
-    if config.gigachat.enabled:
-        config_manager.set("GIGACHAT_ENABLED", True)
-        if config.gigachat.api_key:
-            config_manager.set("GIGACHAT_API_KEY", config.gigachat.api_key)
-    else:
-        config_manager.set("GIGACHAT_ENABLED", False)
-    
-    if config.gemini.enabled:
-        config_manager.set("GEMINI_ENABLED", True)
-        if config.gemini.api_key:
-            config_manager.set("GEMINI_API_KEY", config.gemini.api_key)
-    else:
-        config_manager.set("GEMINI_ENABLED", False)
-    
-    if config.openrouter.enabled:
-        config_manager.set("OPENROUTER_ENABLED", True)
-        if config.openrouter.api_key:
-            config_manager.set("OPENROUTER_API_KEY", config.openrouter.api_key)
-        if config.openrouter.model:
-            config_manager.set("OPENROUTER_MODEL", config.openrouter.model)
-    else:
-        config_manager.set("OPENROUTER_ENABLED", False)
-    
-    # Перезагружаем провайдеров
-    manager.reload_providers()
-    
-    return {
-        "status": "updated",
-        "config": {
-            "gigachat": {
-                "enabled": config.gigachat.enabled,
-                "has_key": config.gigachat.api_key is not None
+    # Если указан session_id, сохраняем в сессию пользователя
+    if session_id:
+        # Сохраняем конфигурацию в сессию
+        session_manager.set_user_provider(session_id, "gigachat", {
+            "enabled": config.gigachat.enabled,
+            "api_key": config.gigachat.api_key
+        })
+        
+        session_manager.set_user_provider(session_id, "gemini", {
+            "enabled": config.gemini.enabled,
+            "api_key": config.gemini.api_key
+        })
+        
+        session_manager.set_user_provider(session_id, "openrouter", {
+            "enabled": config.openrouter.enabled,
+            "api_key": config.openrouter.api_key,
+            "model": config.openrouter.model
+        })
+        
+        return {
+            "status": "updated",
+            "session_id": session_id,
+            "config": {
+                "gigachat": {
+                    "enabled": config.gigachat.enabled,
+                    "has_key": config.gigachat.api_key is not None
+                },
+                "gemini": {
+                    "enabled": config.gemini.enabled,
+                    "has_key": config.gemini.api_key is not None
+                },
+                "openrouter": {
+                    "enabled": config.openrouter.enabled,
+                    "has_key": config.openrouter.api_key is not None,
+                    "model": config.openrouter.model
+                }
             },
-            "gemini": {
-                "enabled": config.gemini.enabled,
-                "has_key": config.gemini.api_key is not None
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    # Иначе сохраняем в системную конфигурацию (старое поведение)
+    else:
+        from llm.provider_manager import get_provider_manager
+        from core.config_manager import get_config
+        
+        manager = get_provider_manager()
+        config_manager = get_config()
+        
+        # Обновляем конфигурацию
+        if config.gigachat.enabled:
+            config_manager.set("GIGACHAT_ENABLED", True)
+            if config.gigachat.api_key:
+                config_manager.set("GIGACHAT_API_KEY", config.gigachat.api_key)
+        else:
+            config_manager.set("GIGACHAT_ENABLED", False)
+        
+        if config.gemini.enabled:
+            config_manager.set("GEMINI_ENABLED", True)
+            if config.gemini.api_key:
+                config_manager.set("GEMINI_API_KEY", config.gemini.api_key)
+        else:
+            config_manager.set("GEMINI_ENABLED", False)
+        
+        if config.openrouter.enabled:
+            config_manager.set("OPENROUTER_ENABLED", True)
+            if config.openrouter.api_key:
+                config_manager.set("OPENROUTER_API_KEY", config.openrouter.api_key)
+            if config.openrouter.model:
+                config_manager.set("OPENROUTER_MODEL", config.openrouter.model)
+        else:
+            config_manager.set("OPENROUTER_ENABLED", False)
+        
+        # Перезагружаем провайдеров
+        manager.reload_providers()
+        
+        return {
+            "status": "updated",
+            "config": {
+                "gigachat": {
+                    "enabled": config.gigachat.enabled,
+                    "has_key": config.gigachat.api_key is not None
+                },
+                "gemini": {
+                    "enabled": config.gemini.enabled,
+                    "has_key": config.gemini.api_key is not None
+                },
+                "openrouter": {
+                    "enabled": config.openrouter.enabled,
+                    "has_key": config.openrouter.api_key is not None,
+                    "model": config.openrouter.model
+                }
             },
-            "openrouter": {
-                "enabled": config.openrouter.enabled,
-                "has_key": config.openrouter.api_key is not None,
-                "model": config.openrouter.model
-            }
-        },
-        "timestamp": datetime.now().isoformat()
-    }
+            "timestamp": datetime.now().isoformat()
+        }
 
 
 @router.get("/llm/health")
@@ -3388,30 +3499,54 @@ async def llm_health():
 
 
 @router.post("/llm/test/{provider}")
-async def llm_test_provider(provider: str):
+async def llm_test_provider(provider: str, session_id: str = None):
     """Тестирование провайдера"""
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from llm.provider_manager import get_provider_manager
+    from llm.session_provider_manager import get_session_manager
     
-    manager = get_provider_manager()
+    session_manager = get_session_manager()
     
-    try:
-        result = await manager.test_provider(provider)
-        return {
-            "provider": provider,
-            "status": "success" if result else "failed",
-            "result": result,
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        return {
-            "provider": provider,
-            "status": "error",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
+    if session_id:
+        # Тестируем провайдер пользователя
+        try:
+            result = await session_manager.test_user_provider(session_id, provider)
+            return {
+                "provider": provider,
+                "session_id": session_id,
+                "status": "success" if result.get("success") else "failed",
+                "result": result,
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            return {
+                "provider": provider,
+                "session_id": session_id,
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+    else:
+        # Тестируем системный провайдер
+        from llm.provider_manager import get_provider_manager
+        manager = get_provider_manager()
+        
+        try:
+            result = await manager.test_provider(provider)
+            return {
+                "provider": provider,
+                "status": "success" if result else "failed",
+                "result": result,
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            return {
+                "provider": provider,
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
 
 
 @router.get("/llm/usage")

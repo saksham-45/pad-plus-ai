@@ -131,7 +131,8 @@ class PipelineExecutor:
     async def execute(
         self,
         user_message: str,
-        context: Dict = None
+        context: Dict = None,
+        session_id: str = None
     ) -> PipelineResult:
         """
         Выполняет полный пайплайн обработки
@@ -305,7 +306,7 @@ class PipelineExecutor:
         
         # === 7. GENERATE RESPONSE ===
         try:
-            from llm.gigachat import gigachat
+            from llm.session_provider_manager import get_session_manager
             from core.anti_directive import ANTI_DIRECTIVE
             
             # === 7.1. ROOTS MEMORY (фундаментальные принципы) ===
@@ -335,78 +336,6 @@ class PipelineExecutor:
 Всегда отвечай на русском. Будь кратким, но глубоким.
 Сомневайся в утверждениях. Проверяй факты.
 """
-            
-            if rag_context:
-                full_context += f"\n\n📚 Контекст из памяти:\n{rag_context}"
-
-            if facts_context:
-                full_context += "\n\n📝 Известные факты:\n"
-                for f in facts_context[:2]:
-                    full_context += f"- {f.to_sentence()}\n"
-
-            # v3.1: Эпизодический контекст
-            if episodic_context:
-                full_context += episodic_context
-
-            # v3.1: Процедурный контекст
-            if procedure_context:
-                full_context += procedure_context
-
-            # Запрашиваем с return_raw=True для получения метаданных
-            gen_result = await gigachat.generate(
-                user_message, full_context, return_raw=True
-            )
-            
-            # Обрабатываем результат
-            if isinstance(gen_result, dict):
-                result.response = gen_result.get("content", "")
-                result.raw_llm_response = gen_result.get("raw")
-                result.llm_metadata = gen_result.get("metadata")
-            else:
-                result.response = gen_result
-                result.raw_llm_response = None
-                result.llm_metadata = None
-            
-            result.provider = "gigachat" if gigachat.enabled else "fallback"
-            result.confidence = 0.7 if gigachat.enabled else 0.3
-            
-        except Exception as e:
-            logger.error(f"Generation error: {e}")
-            result.response = "Произошла ошибка при генерации ответа."
-            result.errors.append(f"Generation: {str(e)}")
-            result.execution_time_ms = (time.time() - start_time) * 1000
-            return result
-        
-        # === 7. TRUTH LOOP (Verify) ===
-        try:
-            from core.truth_loop import get_truth_loop
-            truth = get_truth_loop()
-            verification = truth.verify(result.response)
-            result.truth_confidence = verification.get("overall_confidence", 0.5)
-            result.claims_verified = len(verification.get("claims", []))
-        except Exception as e:
-            logger.warning(f"Truth loop error: {e}")
-        
-        # === 8. REMEMBER ===
-        try:
-            from memory.rag import get_rag
-            rag = get_rag()
-            rag.add_dialog(
-                user_message=user_message,
-                ai_response=result.response,
-                metadata={
-                    "intent": intent,
-                    "provider": result.provider,
-                    "confidence": result.confidence
-                }
-            )
-        except Exception as e:
-            logger.warning(f"Memory save error: {e}")
-
-        # === 8.1 EPISODIC MEMORY (сохранение эпизода) ===
-        try:
-            from memory.episodic import get_episodic_memory
-            episodic = get_episodic_memory()
 
             # Определяем значимость эпизода
             significance = 0.5

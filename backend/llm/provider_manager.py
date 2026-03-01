@@ -317,24 +317,28 @@ class ProviderManager:
         self.providers[provider.name] = provider
     
     def setup_from_env(self):
-        """Настраивает провайдеров из переменных окружения"""
+        """Настраивает провайдеров из переменных окружения и конфигурации"""
+        from core.config_manager import get_config
+        config_manager = get_config()
+        
         # GigaChat
-        gigachat_key = os.getenv("GIGACHAT_API_KEY")
-        gigachat_enabled = os.getenv("GIGACHAT_ENABLED", "false").lower() == "true"
+        gigachat_key = os.getenv("GIGACHAT_API_KEY") or config_manager.get("GIGACHAT_API_KEY")
+        gigachat_enabled = os.getenv("GIGACHAT_ENABLED", "false").lower() == "true" or config_manager.get("GIGACHAT_ENABLED", False)
         if gigachat_key and gigachat_enabled:
             self.register(GigaChatProvider(gigachat_key, True))
         
         # Gemini
-        gemini_key = os.getenv("GOOGLE_API_KEY")
-        gemini_enabled = os.getenv("GEMINI_ENABLED", "false").lower() == "true"
+        gemini_key = os.getenv("GOOGLE_API_KEY") or config_manager.get("GOOGLE_API_KEY")
+        gemini_enabled = os.getenv("GEMINI_ENABLED", "false").lower() == "true" or config_manager.get("GEMINI_ENABLED", False)
         if gemini_key and gemini_enabled:
             self.register(GeminiProvider(gemini_key, True))
         
         # OpenRouter
-        openrouter_key = os.getenv("OPENROUTER_API_KEY")
-        openrouter_enabled = os.getenv("OPENROUTER_ENABLED", "false").lower() == "true"
+        openrouter_key = os.getenv("OPENROUTER_API_KEY") or config_manager.get("OPENROUTER_API_KEY")
+        openrouter_enabled = os.getenv("OPENROUTER_ENABLED", "false").lower() == "true" or config_manager.get("OPENROUTER_ENABLED", False)
         if openrouter_key and openrouter_enabled:
-            self.register(OpenRouterProvider(openrouter_key, True))
+            model = config_manager.get("OPENROUTER_MODEL") or os.getenv("OPENROUTER_MODEL", "google/gemma-7b-it")
+            self.register(OpenRouterProvider(openrouter_key, True, model))
     
     async def generate(self, prompt: str, context: str = "") -> LLMResponse:
         """Генерирует ответ через каскад провайдеров"""
@@ -423,6 +427,22 @@ class ProviderManager:
             if provider and provider.enabled:
                 return name
         return None
+    
+    def reload_providers(self):
+        """Перезагружает провайдеров из конфигурации"""
+        # Очищаем текущих провайдеров
+        self.providers.clear()
+        
+        # Перезагружаем из environment variables
+        self.setup_from_env()
+        
+        # Проверяем здоровье провайдеров
+        for provider in self.providers.values():
+            try:
+                # Асинхронная проверка здоровья будет вызвана при необходимости
+                provider.healthy = provider.enabled
+            except Exception:
+                provider.healthy = False
 
 
 # Глобальный экземпляр

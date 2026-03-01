@@ -12,6 +12,16 @@ const Settings = ({ onClose }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Получение session_id
+  const getSessionId = () => {
+    let sessionId = localStorage.getItem('session_id')
+    if (!sessionId) {
+      sessionId = 'session_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now()
+      localStorage.setItem('session_id', sessionId)
+    }
+    return sessionId
+  };
+
   // Загрузка текущей конфигурации
   useEffect(() => {
     loadProviders();
@@ -21,7 +31,8 @@ const Settings = ({ onClose }) => {
 
   const loadProviders = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/v1/llm/providers`);
+      const sessionId = getSessionId()
+      const response = await fetch(`${API_URL}/api/v1/llm/providers?session_id=${sessionId}`);
       if (response.ok) {
         const data = await response.json();
         setProviders(data.providers);
@@ -70,7 +81,8 @@ const Settings = ({ onClose }) => {
     setSuccess('');
     
     try {
-      const response = await fetch(`${API_URL}/api/v1/llm/test/${provider}`, {
+      const sessionId = getSessionId()
+      const response = await fetch(`${API_URL}/api/v1/llm/test/${provider}?session_id=${sessionId}`, {
         method: 'POST'
       });
       const data = await response.json();
@@ -93,7 +105,8 @@ const Settings = ({ onClose }) => {
     setSuccess('');
     
     try {
-      const response = await fetch(`${API_URL}/api/v1/llm/config`, {
+      const sessionId = getSessionId()
+      const response = await fetch(`${API_URL}/api/v1/llm/config?session_id=${sessionId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
