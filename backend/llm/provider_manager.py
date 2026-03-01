@@ -359,6 +359,35 @@ class ProviderManager:
         """Проверяет, есть ли активные провайдеры"""
         return any(p.enabled for p in self.providers.values())
     
+    async def test_provider(self, provider_name: str) -> dict:
+        """Тестирует провайдера"""
+        provider = self.providers.get(provider_name)
+        if not provider:
+            return {
+                "success": False,
+                "error": f"Провайдер {provider_name} не найден"
+            }
+        
+        if not provider.enabled:
+            return {
+                "success": False,
+                "error": f"Провайдер {provider_name} отключен"
+            }
+        
+        try:
+            # Тестируем генерацию ответа
+            response = await provider.generate("Привет", "Тестовый запрос")
+            return {
+                "success": True,
+                "message": f"Провайдер {provider_name} работает корректно",
+                "response": response.text[:100] + "..." if len(response.text) > 100 else response.text
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Ошибка при тестировании провайдера {provider_name}: {str(e)}"
+            }
+    
     def get_status(self) -> dict:
         """Возвращает статус провайдеров"""
         return {
