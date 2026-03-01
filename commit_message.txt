@@ -1,0 +1,6 @@
+Integrate Supabase PostgreSQL database
+
+- Update render.yaml with Supabase DATABASE_URL
+- Add psycopg2-binary dependency  
+- Add database connection manager
+- Support both PostgreSQL and SQLite backends

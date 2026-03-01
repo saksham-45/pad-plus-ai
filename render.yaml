@@ -31,17 +31,13 @@ services:
       - key: LOG_LEVEL
         value: "info"
       - key: DATABASE_URL
-        value: "sqlite:///./data/memory.db"
-    disk:
-      name: padplus-data
-      mountPath: /opt/render/project/data
-      sizeGB: 1
+        value: "postgresql://postgres:TiMuPom13Q5OfKBi@db.hgjbjccpeirwrabbcjhr.supabase.co:5432/postgres"
+    # Убрана секция disk - используем внешнюю БД Supabase
 
   # Frontend - Static Site
   - type: web
     name: padplus-ai-frontend
     runtime: static
-    region: frankfurt
     plan: free
     buildCommand: |
       cd frontend

@@ -13,6 +13,9 @@ from typing import Optional, Dict, List, Any, Callable
 from enum import Enum
 import json
 import os
+import sqlite3
+import psycopg2
+from typing import Optional
 import logging
 
 logger = logging.getLogger("neuromind.config")
@@ -452,3 +455,47 @@ def get_config() -> ConfigManager:
     if _config_manager is None:
         _config_manager = ConfigManager()
     return _config_manager
+
+
+def get_database_url() -> str:
+    """Получить URL базы данных из переменных окружения"""
+    return os.getenv('DATABASE_URL', 'sqlite:///./data/memory.db')
+
+
+def get_database_connection():
+    """Получить подключение к базе данных"""
+    db_url = get_database_url()
+    
+    if db_url.startswith('postgresql'):
+        # PostgreSQL (Supabase)
+        return psycopg2.connect(db_url)
+    else:
+        # SQLite (локальная разработка)
+        # Заменяем sqlite:/// на путь к файлу
+        db_path = db_url.replace('sqlite:///', '')
+        return sqlite3.connect(db_path)
+
+
+def test_database_connection():
+    """Тест подключения к базе данных"""
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        
+        db_url = get_database_url()
+        if db_url.startswith('postgresql'):
+            cursor.execute("SELECT version();")
+            version = cursor.fetchone()
+            print(f"✅ Подключено к PostgreSQL: {version[0]}")
+        else:
+            cursor.execute("SELECT sqlite_version();")
+            version = cursor.fetchone()
+            print(f"✅ Подключено к SQLite: {version[0]}")
+        
+        cursor.close()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        print(f"❌ Ошибка подключения к БД: {e}")
+        return False

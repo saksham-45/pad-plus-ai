@@ -7,403 +7,403 @@
 Система аналитики обеспечивает:
 
 - Сбор и анализ метрик производительности
-- Визуализацию данных в реальном времени
-- Прогнозирование и предиктивную аналитику
-- Отчеты и дашборды
-- Мониторинг состояния системы
+- Мониторинг использования системы
+- Анализ поведения пользователей
+- Отслеживание эффективности ИИ
+- Генерацию отчетов и визуализаций
 
 ## Архитектура аналитики
 
 ### Компоненты
 
 1. **MetricsCollector** - Сбор метрик
-2. **AnalyticsEngine** - Аналитический движок
-3. **DataVisualizer** - Визуализация данных
-4. **ReportGenerator** - Генерация отчетов
-5. **PredictiveAnalyzer** - Предиктивный анализ
+2. **AnalyticsProcessor** - Обработка аналитики
+3. **PerformanceMonitor** - Монитор производительности
+4. **UserBehaviorAnalyzer** - Анализ поведения пользователей
+5. **ReportGenerator** - Генератор отчетов
 
 ### Типы метрик
 
 ```python
 METRIC_TYPES = {
-    # Производительность
-    "response_time": "Время ответа",
-    "throughput": "Пропускная способность",
-    "error_rate": "Процент ошибок",
-    "memory_usage": "Использование памяти",
+    # Системные метрики
+    "system": {
+        "cpu_usage": "Использование CPU",
+        "memory_usage": "Использование памяти",
+        "disk_usage": "Использование диска",
+        "response_time": "Время ответа",
+        "error_rate": "Частота ошибок"
+    },
     
-    # Эмоциональные метрики
-    "emotion_stability": "Эмоциональная стабильность",
-    "mood_trends": "Тренды настроения",
-    "engagement_level": "Уровень вовлеченности",
+    # Метрики ИИ
+    "ai": {
+        "token_usage": "Использование токенов",
+        "model_performance": "Производительность моделей",
+        "emotion_stability": "Эмоциональная стабильность",
+        "goal_completion": "Выполнение целей",
+        "learning_progress": "Прогресс обучения"
+    },
     
-    # Автономия
-    "task_completion_rate": "Процент завершенных задач",
-    "goal_achievement": "Достижение целей",
-    "learning_progress": "Прогресс обучения",
+    # Пользовательские метрики
+    "user": {
+        "session_duration": "Длительность сессии",
+        "interaction_frequency": "Частота взаимодействий",
+        "satisfaction_score": "Уровень удовлетворенности",
+        "feature_usage": "Использование функций",
+        "retention_rate": "Уровень удержания"
+    },
     
-    # Память
-    "memory_utilization": "Использование памяти",
-    "recall_accuracy": "Точность воспроизведения",
-    "knowledge_growth": "Рост знаний",
-    
-    # Безопасность
-    "security_incidents": "Инциденты безопасности",
-    "blocked_requests": "Заблокированные запросы",
-    "verification_success": "Успешность верификации"
+    # Бизнес метрики
+    "business": {
+        "conversion_rate": "Коэффициент конверсии",
+        "user_engagement": "Вовлеченность пользователей",
+        "feature_adoption": "Принятие функций",
+        "revenue_impact": "Влияние на доход",
+        "cost_efficiency": "Эффективность затрат"
+    }
 }
 ```
 
-## MetricsCollector (core/analytics.py)
+## MetricsCollector
 
 ### Сбор метрик
 
 ```python
 class MetricsCollector:
     def __init__(self):
-        self.metrics = {}
+        self.metrics_storage = {}
         self.collection_interval = 60  # секунд
-        self.running = False
+        self.active_collectors = {}
         
-    async def start(self):
+    def start_collection(self):
         """Запуск сбора метрик"""
-        self.running = True
-        asyncio.create_task(self.collect_metrics_loop())
+        # Запуск фоновых задач сбора
+        asyncio.create_task(self.collect_system_metrics())
+        asyncio.create_task(self.collect_ai_metrics())
+        asyncio.create_task(self.collect_user_metrics())
         
-    async def stop(self):
-        """Остановка сбора метрик"""
-        self.running = False
-        
-    async def collect_metrics_loop(self):
-        """Цикл сбора метрик"""
-        while self.running:
-            # Сбор всех типов метрик
-            performance_metrics = await self.collect_performance_metrics()
-            emotion_metrics = await self.collect_emotion_metrics()
-            autonomy_metrics = await self.collect_autonomy_metrics()
-            memory_metrics = await self.collect_memory_metrics()
-            safety_metrics = await self.collect_safety_metrics()
-            
-            # Сохранение метрик
-            timestamp = datetime.now()
-            metrics_data = {
-                "timestamp": timestamp,
-                "performance": performance_metrics,
-                "emotion": emotion_metrics,
-                "autonomy": autonomy_metrics,
-                "memory": memory_metrics,
-                "safety": safety_metrics
-            }
-            
-            await self.store_metrics(metrics_data)
-            
-            # Рассылка через WebSocket
-            await ws_manager.broadcast({
-                "type": "analytics_update",
-                "data": metrics_data
-            })
-            
+    async def collect_system_metrics(self):
+        """Сбор системных метрик"""
+        while True:
+            try:
+                # Сбор метрик системы
+                system_metrics = await self.gather_system_metrics()
+                
+                # Сохранение метрик
+                await self.store_metrics("system", system_metrics)
+                
+                # Отправка событий
+                await self.publish_metrics_event("system", system_metrics)
+                
+            except Exception as e:
+                logger.error(f"System metrics collection failed: {e}")
+                
             await asyncio.sleep(self.collection_interval)
             
-    async def collect_performance_metrics(self) -> dict:
-        """Сбор метрик производительности"""
-        return {
-            "response_time": await self.get_response_time(),
-            "throughput": await self.get_throughput(),
-            "error_rate": await self.get_error_rate(),
-            "memory_usage": await self.get_memory_usage(),
-            "cpu_usage": await self.get_cpu_usage()
-        }
+    async def gather_system_metrics(self) -> dict:
+        """Сбор системных метрик"""
+        import psutil
+        import time
         
-    async def collect_emotion_metrics(self) -> dict:
-        """Сбор эмоциональных метрик"""
-        emotion_state = emotion_manager.get_state()
+        # CPU usage
+        cpu_percent = psutil.cpu_percent(interval=1)
+        
+        # Memory usage
+        memory = psutil.virtual_memory()
+        memory_percent = memory.percent
+        
+        # Disk usage
+        disk = psutil.disk_usage('/')
+        disk_percent = (disk.used / disk.total) * 100
+        
+        # Network stats
+        network = psutil.net_io_counters()
+        
+        # Process stats
+        process = psutil.Process()
+        process_memory = process.memory_info().rss / 1024 / 1024  # MB
         
         return {
-            "current_emotions": emotion_state,
-            "emotion_stability": await self.calculate_emotion_stability(),
-            "mood_trends": await self.get_mood_trends(),
-            "engagement_level": await self.calculate_engagement()
+            "cpu_usage": cpu_percent,
+            "memory_usage": memory_percent,
+            "disk_usage": disk_percent,
+            "network_bytes_sent": network.bytes_sent,
+            "network_bytes_recv": network.bytes_recv,
+            "process_memory_mb": process_memory,
+            "timestamp": datetime.now().isoformat()
         }
 ```
 
-### Специализированные метрики
+### Сбор метрик ИИ
 
 ```python
-async def collect_autonomy_metrics(self) -> dict:
-    """Сбор метрик автономии"""
-    autonomy_status = await autonomy_manager.get_status()
-    
-    return {
-        "task_completion_rate": autonomy_status["completed_tasks"] / max(1, autonomy_status["total_tasks"]),
-        "goal_achievement": await self.get_goal_achievement(),
-        "learning_progress": await self.get_learning_progress(),
-        "autonomy_level": autonomy_manager.autonomy_level,
-        "active_tasks": len(autonomy_manager.planner.tasks)
-    }
-    
-async def collect_memory_metrics(self) -> dict:
-    """Сбор метрик памяти"""
-    rag_stats = await rag_system.get_statistics()
-    facts_stats = await facts_manager.get_statistics()
-    knowledge_stats = await knowledge_graph.get_statistics()
-    
-    return {
-        "memory_utilization": rag_stats["total_dialogs"],
-        "recall_accuracy": await self.calculate_recall_accuracy(),
-        "knowledge_growth": knowledge_stats["total_entities"],
-        "fact_confidence": facts_stats["avg_confidence"],
-        "memory_efficiency": await self.calculate_memory_efficiency()
-    }
-    
-async def collect_safety_metrics(self) -> dict:
-    """Сбор метрик безопасности"""
-    safety_stats = await safety_layer.get_statistics()
-    
-    return {
-        "security_incidents": safety_stats["violations"],
-        "blocked_requests": safety_stats["blocked_count"],
-        "verification_success": safety_stats["verification_rate"],
-        "false_positive_rate": safety_stats["false_positives"],
-        "response_time": safety_stats["avg_check_time"]
-    }
+async def collect_ai_metrics(self):
+    """Сбор метрик ИИ"""
+    while True:
+        try:
+            # Сбор метрик ИИ компонентов
+            ai_metrics = await self.gather_ai_metrics()
+            
+            # Сохранение метрик
+            await self.store_metrics("ai", ai_metrics)
+            
+            # Отправка событий
+            await self.publish_metrics_event("ai", ai_metrics)
+            
+        except Exception as e:
+            logger.error(f"AI metrics collection failed: {e}")
+            
+        await asyncio.sleep(self.collection_interval)
+        
+    async def gather_ai_metrics(self) -> dict:
+        """Сбор метрик ИИ"""
+        # Токены
+        token_usage = await self.get_token_usage()
+        
+        # Производительность моделей
+        model_performance = await self.get_model_performance()
+        
+        # Эмоциональная стабильность
+        emotion_stability = await self.get_emotion_stability()
+        
+        # Цели
+        goal_progress = await self.get_goal_progress()
+        
+        return {
+            "token_usage": token_usage,
+            "model_performance": model_performance,
+            "emotion_stability": emotion_stability,
+            "goal_progress": goal_progress,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    async def get_token_usage(self) -> dict:
+        """Получение статистики использования токенов"""
+        # Сбор статистики по всем провайдерам
+        total_tokens = 0
+        provider_tokens = {}
+        
+        for provider_name, provider in self.active_collectors.items():
+            if hasattr(provider, 'get_token_usage'):
+                usage = await provider.get_token_usage()
+                provider_tokens[provider_name] = usage
+                total_tokens += usage.get("total", 0)
+                
+        return {
+            "total_tokens": total_tokens,
+            "provider_breakdown": provider_tokens,
+            "cost_estimate": self.calculate_cost_estimate(provider_tokens)
+        }
+        
+    def calculate_cost_estimate(self, provider_tokens: dict) -> float:
+        """Расчет оценочной стоимости"""
+        total_cost = 0.0
+        
+        # Стоимость по провайдерам (в USD за 1000 токенов)
+        cost_rates = {
+            "openai": 0.002,
+            "anthropic": 0.003,
+            "google": 0.0015,
+            "openrouter": 0.001
+        }
+        
+        for provider, usage in provider_tokens.items():
+            rate = cost_rates.get(provider, 0.002)  # Стандартная ставка
+            tokens = usage.get("total", 0)
+            cost = (tokens / 1000) * rate
+            total_cost += cost
+            
+        return total_cost
 ```
 
-## AnalyticsEngine
-
-### Аналитический движок
+### Сбор пользовательских метрик
 
 ```python
-class AnalyticsEngine:
+async def collect_user_metrics(self):
+    """Сбор пользовательских метрик"""
+    while True:
+        try:
+            # Сбор метрик пользователей
+            user_metrics = await self.gather_user_metrics()
+            
+            # Сохранение метрик
+            await self.store_metrics("user", user_metrics)
+            
+            # Отправка событий
+            await self.publish_metrics_event("user", user_metrics)
+            
+        except Exception as e:
+            logger.error(f"User metrics collection failed: {e}")
+            
+        await asyncio.sleep(self.collection_interval)
+        
+    async def gather_user_metrics(self) -> dict:
+        """Сбор пользовательских метрик"""
+        # Активные сессии
+        active_sessions = await self.get_active_sessions()
+        
+        # Частота взаимодействий
+        interaction_stats = await self.get_interaction_stats()
+        
+        # Уровень удовлетворенности
+        satisfaction_score = await self.get_satisfaction_score()
+        
+        # Использование функций
+        feature_usage = await self.get_feature_usage()
+        
+        return {
+            "active_sessions": active_sessions,
+            "interaction_stats": interaction_stats,
+            "satisfaction_score": satisfaction_score,
+            "feature_usage": feature_usage,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    async def get_active_sessions(self) -> int:
+        """Получение количества активных сессий"""
+        # Реализация зависит от системы управления сессиями
+        return len(self.active_collectors.get("sessions", []))
+        
+    async def get_interaction_stats(self) -> dict:
+        """Получение статистики взаимодействий"""
+        # Статистика по взаимодействиям
+        return {
+            "total_interactions": 1000,
+            "avg_session_duration": 300,  # секунды
+            "interactions_per_hour": 50,
+            "peak_usage_time": "14:00-16:00"
+        }
+```
+
+## AnalyticsProcessor
+
+### Обработка аналитики
+
+```python
+class AnalyticsProcessor:
     def __init__(self):
-        self.analyzers = {}
+        self.analytics_rules = self.load_analytics_rules()
         self.trend_analyzer = TrendAnalyzer()
-        self.correlation_analyzer = CorrelationAnalyzer()
         self.anomaly_detector = AnomalyDetector()
         
-    async def analyze_metrics(self, metrics_data: dict) -> dict:
-        """Анализ метрик"""
-        analysis = {
-            "performance_analysis": await self.analyze_performance(metrics_data["performance"]),
-            "emotion_analysis": await self.analyze_emotions(metrics_data["emotion"]),
-            "autonomy_analysis": await self.analyze_autonomy(metrics_data["autonomy"]),
-            "memory_analysis": await self.analyze_memory(metrics_data["memory"]),
-            "safety_analysis": await self.analyze_safety(metrics_data["safety"]),
-            "trends": await self.trend_analyzer.analyze_trends(metrics_data),
-            "correlations": await self.correlation_analyzer.find_correlations(metrics_data),
-            "anomalies": await self.anomaly_detector.detect_anomalies(metrics_data)
-        }
-        
-        return analysis
-        
-    async def analyze_performance(self, performance_data: dict) -> dict:
-        """Анализ производительности"""
+    def load_analytics_rules(self) -> dict:
+        """Загрузка правил аналитики"""
         return {
-            "response_time_analysis": self.analyze_response_time(performance_data["response_time"]),
-            "throughput_analysis": self.analyze_throughput(performance_data["throughput"]),
-            "error_rate_analysis": self.analyze_error_rate(performance_data["error_rate"]),
-            "resource_utilization": self.analyze_resource_utilization(performance_data)
-        }
-        
-    def analyze_response_time(self, response_time: float) -> dict:
-        """Анализ времени ответа"""
-        if response_time < 1.0:
-            status = "excellent"
-        elif response_time < 3.0:
-            status = "good"
-        elif response_time < 5.0:
-            status = "acceptable"
-        else:
-            status = "poor"
-            
-        return {
-            "value": response_time,
-            "status": status,
-            "recommendations": self.get_response_time_recommendations(response_time)
-        }
-```
-
-### Анализ эмоций
-
-```python
-async def analyze_emotions(self, emotion_data: dict) -> dict:
-    """Анализ эмоциональных метрик"""
-    emotions = emotion_data["current_emotions"]
-    
-    # Анализ стабильности
-    stability = self.calculate_emotion_stability(emotions)
-    
-    # Анализ баланса
-    balance = self.analyze_emotion_balance(emotions)
-    
-    # Анализ трендов
-    trends = await self.trend_analyzer.analyze_emotion_trends(emotions)
-    
-    return {
-        "stability": stability,
-        "balance": balance,
-        "trends": trends,
-        "recommendations": self.get_emotion_recommendations(emotions)
-    }
-    
-def calculate_emotion_stability(self, emotions: dict) -> float:
-    """Расчет эмоциональной стабильности"""
-    # Расчет стандартного отклонения от нормальных значений
-    normal_values = {
-        "удовольствие": 0.5,
-        "возбуждение": 0.3,
-        "доминирование": 0.5,
-        "любопытство": 0.5,
-        "уверенность": 0.5,
-        "социальная_связь": 0.5
-    }
-    
-    deviations = []
-    for emotion, value in emotions.items():
-        if emotion in normal_values:
-            deviation = abs(value - normal_values[emotion])
-            deviations.append(deviation)
-    
-    stability = 1.0 - (sum(deviations) / len(deviations))
-    return max(0.0, min(1.0, stability))
-```
-
-## DataVisualizer
-
-### Визуализация данных
-
-```python
-class DataVisualizer:
-    def __init__(self):
-        self.charts = {}
-        self.dashboards = {}
-        
-    def create_chart(self, chart_type: str, data: dict, options: dict = None) -> str:
-        """Создание графика"""
-        chart_id = str(uuid.uuid4())
-        
-        chart = {
-            "id": chart_id,
-            "type": chart_type,
-            "data": data,
-            "options": options or {},
-            "created_at": datetime.now()
-        }
-        
-        self.charts[chart_id] = chart
-        return chart_id
-        
-    def create_dashboard(self, dashboard_name: str, charts: list) -> str:
-        """Создание дашборда"""
-        dashboard_id = str(uuid.uuid4())
-        
-        dashboard = {
-            "id": dashboard_id,
-            "name": dashboard_name,
-            "charts": charts,
-            "layout": self.calculate_layout(charts),
-            "created_at": datetime.now()
-        }
-        
-        self.dashboards[dashboard_id] = dashboard
-        return dashboard_id
-        
-    def calculate_layout(self, charts: list) -> dict:
-        """Расчет расположения графиков на дашборде"""
-        # Алгоритм автоматического расположения
-        layout = {}
-        row = 0
-        col = 0
-        
-        for chart_id in charts:
-            layout[chart_id] = {
-                "row": row,
-                "col": col,
-                "width": 4,
-                "height": 3
+            "performance_thresholds": {
+                "response_time": 5.0,  # секунд
+                "error_rate": 0.05,     # 5%
+                "cpu_usage": 80.0,      # %
+                "memory_usage": 85.0    # %
+            },
+            "ai_metrics_thresholds": {
+                "token_usage_growth": 0.2,      # 20%
+                "model_performance_drop": 0.1,  # 10%
+                "emotion_stability": 0.8,       # 80%
+                "goal_completion": 0.7         # 70%
+            },
+            "user_metrics_thresholds": {
+                "satisfaction_score": 0.7,      # 70%
+                "session_duration": 120,        # секунд
+                "interaction_frequency": 5      # в час
             }
+        }
+        
+    async def process_metrics(self, metrics: dict):
+        """Обработка метрик"""
+        # Анализ трендов
+        await self.trend_analyzer.analyze_trends(metrics)
+        
+        # Обнаружение аномалий
+        await self.anomaly_detector.detect_anomalies(metrics)
+        
+        # Генерация инсайтов
+        insights = await self.generate_insights(metrics)
+        
+        # Отправка уведомлений
+        await self.send_notifications(insights)
+        
+    async def generate_insights(self, metrics: dict) -> list:
+        """Генерация инсайтов"""
+        insights = []
+        
+        # Анализ производительности
+        if metrics.get("system", {}).get("response_time", 0) > 5.0:
+            insights.append({
+                "type": "performance",
+                "severity": "high",
+                "message": "Высокое время ответа",
+                "recommendation": "Оптимизировать производительность"
+            })
             
-            col += 4
-            if col >= 12:
-                col = 0
-                row += 3
+        # Анализ использования токенов
+        if metrics.get("ai", {}).get("token_usage", {}).get("total", 0) > 10000:
+            insights.append({
+                "type": "cost",
+                "severity": "medium",
+                "message": "Высокое использование токенов",
+                "recommendation": "Проверить эффективность использования"
+            })
+            
+        # Анализ удовлетворенности пользователей
+        if metrics.get("user", {}).get("satisfaction_score", 1) < 0.7:
+            insights.append({
+                "type": "user",
+                "severity": "high",
+                "message": "Низкий уровень удовлетворенности",
+                "recommendation": "Улучшить качество ответов"
+            })
+            
+        return insights
+```
+
+## PerformanceMonitor
+
+### Мониторинг производительности
+
+```python
+class PerformanceMonitor:
+    def __init__(self, event_bus: EventBus):
+        self.event_bus = event_bus
+        self.performance_thresholds = {
+            "response_time": 5.0,  # секунд
+            "error_rate": 0.05,     # 5%
+            "cpu_usage": 80.0,      # %
+            "memory_usage": 85.0    # %
+        }
+        self.alerts = []
+        
+    async def monitor_performance(self):
+        """Мониторинг производительности"""
+        while True:
+            try:
+                # Получение метрик
+                metrics = await self.get_current_metrics()
                 
-        return layout
-```
-
-### Типы графиков
-
-```python
-CHART_TYPES = {
-    "line": "Линейный график",
-    "bar": "Столбчатая диаграмма",
-    "pie": "Круговая диаграмма",
-    "scatter": "Точечная диаграмма",
-    "heatmap": "Тепловая карта",
-    "gauge": "Индикатор",
-    "area": "Область",
-    "bubble": "Пузырьковая диаграмма"
-}
-
-def generate_chart_data(self, chart_type: str, metrics: list) -> dict:
-    """Генерация данных для графика"""
-    if chart_type == "line":
-        return self.generate_line_chart_data(metrics)
-    elif chart_type == "bar":
-        return self.generate_bar_chart_data(metrics)
-    elif chart_type == "pie":
-        return self.generate_pie_chart_data(metrics)
-    # ... другие типы графиков
-```
-
-## ReportGenerator
-
-### Генерация отчетов
-
-```python
-class ReportGenerator:
-    def __init__(self):
-        self.report_templates = {}
-        self.report_history = []
+                # Проверка порогов
+                await self.check_thresholds(metrics)
+                
+                # Анализ трендов
+                await self.analyze_trends(metrics)
+                
+            except Exception as e:
+                logger.error(f"Performance monitoring failed: {e}")
+                
+            await asyncio.sleep(30)  # Проверять каждые 30 секунд
+            
+    async def check_thresholds(self, metrics: dict):
+        """Проверка пороговых значений"""
+        alerts = []
         
-    def generate_performance_report(self, time_range: tuple) -> dict:
-        """Генерация отчета по производительности"""
-        metrics = await self.get_metrics_in_range(time_range)
-        
-        report = {
-            "title": "Performance Report",
-            "period": time_range,
-            "generated_at": datetime.now(),
-            "summary": self.generate_performance_summary(metrics),
-            "details": self.generate_performance_details(metrics),
-            "charts": self.generate_performance_charts(metrics),
-            "recommendations": self.generate_performance_recommendations(metrics)
-        }
-        
-        self.report_history.append(report)
-        return report
-        
-    def generate_performance_summary(self, metrics: list) -> dict:
-        """Генерация сводки по производительности"""
-        response_times = [m["performance"]["response_time"] for m in metrics]
-        error_rates = [m["performance"]["error_rate"] for m in metrics]
-        throughputs = [m["performance"]["throughput"] for m in metrics]
-        
-        return {
-            "avg_response_time": sum(response_times) / len(response_times),
-            "max_response_time": max(response_times),
-            "avg_error_rate": sum(error_rates) / len(error_rates),
-            "max_error_rate": max(error_rates),
-            "avg_throughput": sum(throughputs) / len(throughputs),
-            "total_requests": sum(m["performance"]["total_requests"] for m in metrics)
-        }
-        
-    def generate_performance_charts(self, metrics: list) -> list:
-        """Генерация графиков производительности"""
-        chart_ids = []
-        
-        # График времени ответа
-        response_time_data = [
+        # Проверка времени ответа
+        response_time = metrics.get("response_time", 0)
+        if response_time > self.performance_thresholds["response_time"]:
+            alerts.append({
+                "type": "response_time",
+                "value": response_time,
+                "threshold": self.performance_thresholds["response_time"],
+                "severity": "high"
+            })
+            
             {"x": m["timestamp"], "y": m["performance"]["response_time"]}
             for m in metrics
         ]
