@@ -235,8 +235,8 @@ def get_fallback_response(prompt: str, style: str = "philosophical") -> Fallback
 def is_fallback_needed() -> bool:
     """Проверить, нужен ли fallback (нет активных провайдеров)"""
     try:
-        from core.pipeline import get_pipeline
-        pipeline = get_pipeline()
-        return not pipeline.has_active_providers()
+        from llm.provider_manager import get_provider_manager
+        provider_manager = get_provider_manager()
+        return not provider_manager.has_active_providers()
     except ImportError:
         return True
