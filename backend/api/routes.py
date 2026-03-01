@@ -10,6 +10,12 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+# Fallback imports
+from core.fallback_generator import get_fallback_response, is_fallback_needed
+
+# Импорты для стилей
+from core.style_manager import Style as StyleDataclass
+
 router = APIRouter()
 
 
@@ -25,6 +31,19 @@ class LLMConfig(BaseModel):
     gigachat: ProviderConfig
     gemini: ProviderConfig
     openrouter: ProviderConfig
+
+# Pydantic модели для стилей
+class Style(BaseModel):
+    """Pydantic модель для стиля"""
+    name: str
+    description: str
+    tone: str
+    complexity: str
+    verbosity: str
+    examples: List[str]
+    keywords: List[str]
+    constraints: List[str]
+    enabled: bool = True
 
 class ChatRequest(BaseModel):
     """Запрос на чат"""
@@ -90,55 +109,90 @@ async def chat(request: ChatRequest):
     from core.anti_directive import ANTI_DIRECTIVE
     from analytics.metrics import get_analytics
     
-    # Получаем пайплайн
-    pipeline = get_pipeline()
-    
-    # Выполняем через нервную систему
-    result = await pipeline.execute(
-        user_message=request.prompt,
-        context=request.context
-    )
-    
-    # Аналитика
-    analytics = get_analytics()
-    analytics.track_message(role="user", text=request.prompt)
-    if result.success:
-        analytics.track_message(
-            role="ai",
-            text=result.response,
-            tokens=len(result.response.split())
+    # Проверяем, нужен ли fallback
+    if is_fallback_needed():
+        from core.config_manager import logger
+        logger.info("Используем fallback-ответ (нет активных провайдеров)")
+        fallback_response = get_fallback_response(request.prompt)
+        
+        response = {
+            "prompt": request.prompt,
+            "response": fallback_response.content,
+            "anti_directive": ANTI_DIRECTIVE.text,
+            "timestamp": datetime.now().isoformat(),
+            "confidence": fallback_response.confidence,
+            "provider": fallback_response.provider,
+            "layer": "fallback",
+            "style": fallback_response.style,
+            # Поля пайплайна (fallback)
+            "intent": "general",
+            "safety": {
+                "passed": True,
+                "warning": None
+            },
+            "truth": {
+                "confidence": fallback_response.confidence,
+                "claims_verified": 0
+            },
+            "emotion_style": fallback_response.style,
+            "rag_used": False,
+            "facts_used": False,
+            "execution_time_ms": 0,
+            "success": True,
+            "errors": [],
+            "raw_llm_response": None,
+            "llm_metadata": None
+        }
+    else:
+        # Получаем пайплайн
+        pipeline = get_pipeline()
+        
+        # Выполняем через нервную систему
+        result = await pipeline.execute(
+            user_message=request.prompt,
+            context=request.context
         )
-    
-    # Формируем ответ
-    response = {
-        "prompt": request.prompt,
-        "response": result.response,
-        "anti_directive": ANTI_DIRECTIVE.text,
-        "timestamp": datetime.now().isoformat(),
-        "confidence": result.confidence,
-        "provider": result.provider,
-        "cached": False,
-        "layer": "soil",
-        # Новые поля пайплайна
-        "intent": result.intent,
-        "safety": {
-            "passed": result.safety_passed,
-            "warning": result.safety_warning
-        },
-        "truth": {
-            "confidence": result.truth_confidence,
-            "claims_verified": result.claims_verified
-        },
-        "emotion_style": result.emotion_style,
-        "rag_used": result.rag_used,
-        "facts_used": result.facts_used,
-        "execution_time_ms": result.execution_time_ms,
-        "success": result.success,
-        "errors": result.errors,
-        # Сырой ответ LLM
-        "raw_llm_response": result.raw_llm_response,
-        "llm_metadata": result.llm_metadata
-    }
+        
+        # Аналитика
+        analytics = get_analytics()
+        analytics.track_message(role="user", text=request.prompt)
+        if result.success:
+            analytics.track_message(
+                role="ai",
+                text=result.response,
+                tokens=len(result.response.split())
+            )
+        
+        # Формируем ответ
+        response = {
+            "prompt": request.prompt,
+            "response": result.response,
+            "anti_directive": ANTI_DIRECTIVE.text,
+            "timestamp": datetime.now().isoformat(),
+            "confidence": result.confidence,
+            "provider": result.provider,
+            "cached": False,
+            "layer": "soil",
+            # Новые поля пайплайна
+            "intent": result.intent,
+            "safety": {
+                "passed": result.safety_passed,
+                "warning": result.safety_warning
+            },
+            "truth": {
+                "confidence": result.truth_confidence,
+                "claims_verified": result.claims_verified
+            },
+            "emotion_style": result.emotion_style,
+            "rag_used": result.rag_used,
+            "facts_used": result.facts_used,
+            "execution_time_ms": result.execution_time_ms,
+            "success": result.success,
+            "errors": result.errors,
+            # Сырой ответ LLM
+            "raw_llm_response": result.raw_llm_response,
+            "llm_metadata": result.llm_metadata
+        }
     
     return response
 
@@ -3074,6 +3128,128 @@ async def plans_adapt(plan_id: str, request: AdaptPlanRequest):
     return {
         "status": "adapted",
         "plan": plan.to_dict(),
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+# === STYLE MANAGEMENT ENDPOINTS ===
+
+@router.get("/styles")
+async def styles_list():
+    """Получить список доступных стилей"""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from core.style_manager import get_style_manager
+    
+    manager = get_style_manager()
+    stats = manager.get_style_stats()
+    
+    return {
+        "styles": stats,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@router.get("/styles/{style_name}")
+async def styles_get(style_name: str):
+    """Получить информацию о стиле"""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from core.style_manager import get_style_manager
+    
+    manager = get_style_manager()
+    style = manager.get_style(style_name)
+    
+    if not style:
+        return {"error": "style not found", "style_name": style_name}
+    
+    return {
+        "style": {
+            "name": style.name,
+            "description": style.description,
+            "tone": style.tone,
+            "complexity": style.complexity,
+            "verbosity": style.verbosity,
+            "examples": style.examples,
+            "keywords": style.keywords,
+            "constraints": style.constraints,
+            "enabled": style.enabled
+        },
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@router.post("/styles")
+async def styles_create(style: Style):
+    """Создать пользовательский стиль"""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from core.style_manager import get_style_manager
+    
+    manager = get_style_manager()
+    manager.add_custom_style(style)
+    
+    return {
+        "status": "created",
+        "style_name": style.name,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@router.put("/styles/{style_name}")
+async def styles_update(style_name: str, updates: dict):
+    """Обновить стиль"""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from core.style_manager import get_style_manager
+    
+    manager = get_style_manager()
+    manager.update_style(style_name, updates)
+    
+    return {
+        "status": "updated",
+        "style_name": style_name,
+        "updates": updates,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@router.delete("/styles/{style_name}")
+async def styles_disable(style_name: str):
+    """Отключить стиль"""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from core.style_manager import get_style_manager
+    
+    manager = get_style_manager()
+    manager.disable_style(style_name)
+    
+    return {
+        "status": "disabled",
+        "style_name": style_name,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@router.get("/styles/context/{style_name}")
+async def styles_context(style_name: str):
+    """Получить стилистические инструкции для LLM"""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from core.style_manager import get_style_manager
+    
+    manager = get_style_manager()
+    instructions = manager.get_style_instructions(style_name)
+    
+    return {
+        "style_name": style_name,
+        "instructions": instructions,
         "timestamp": datetime.now().isoformat()
     }
 

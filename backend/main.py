@@ -73,14 +73,6 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 PAD+ AI останавливается...")
 
 
-# Создание приложения
-app = FastAPI(
-    title="PAD+ AI",
-    description="Когнитивный слой, добавляющий эмоции и самосознание любому LLM",
-    version="3.5.0",
-    lifespan=lifespan
-)
-
 # CORS middleware — настройка для production
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 allow_origins = [
@@ -119,6 +111,54 @@ allow_origins = list(set(allow_origins))
 
 logger.info(f"🌐 CORS настроен для origins: {allow_origins}")
 logger.info(f"🏭 Production mode: {is_production}")
+
+# Создание приложения
+app = FastAPI(
+    title="PAD+ AI",
+    description="Когнитивный слой, добавляющий эмоции и самосознание любому LLM",
+    version="3.5.0",
+    lifespan=lifespan
+)
+
+
+# ПРИНУДИТЕЛЬНЫЕ CORS-ЗАГОЛОВКИ (для всех ответов, даже при ошибках)
+@app.middleware("http")
+async def force_cors_headers(request, call_next):
+    """Принудительно добавляет CORS-заголовки к КАЖДОМУ ответу, даже при ошибках"""
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        # Если произошла ошибка в обработке, создаем response с ошибкой
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": "Internal Server Error", "error": str(e)}
+        )
+    
+    # ПРИНУДИТЕЛЬНО добавляем CORS-заголовки к любому ответу
+    origin = request.headers.get("origin")
+    if origin and origin in allow_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    else:
+        # Если origin не в списке, используем первый разрешенный
+        response.headers["Access-Control-Allow-Origin"] = (
+            allow_origins[0] if allow_origins else "*"
+        )
+    
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = (
+        "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+    )
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, Authorization"
+    )
+    
+    # Обработка preflight запросов OPTIONS
+    if request.method == "OPTIONS":
+        return response
+    
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,
