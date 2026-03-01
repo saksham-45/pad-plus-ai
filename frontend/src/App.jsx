@@ -515,7 +515,7 @@ function App() {
       const aiMessage = { 
         id: Date.now() + 1,
         role: 'ai', 
-        text: data.response,
+        text: data.response,  // Извлекаем текст из поля response
         provider: data.provider,
         confidence: data.confidence,
         cached: data.cached,
