@@ -677,20 +677,43 @@ async def rag_search_by_topic(request: TopicSearchRequest):
 @router.post("/rag/search")
 async def rag_search(request: RAGSearchRequest):
     """Семантический поиск по истории диалогов"""
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from memory.rag import get_rag
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from memory.rag import get_rag
+        from core.config_manager import logger
+        
+        logger.info(f"🔍 RAG search request: query='{request.query[:50]}...', n_results={request.n_results}")
+        
+        rag = get_rag()
+        results = rag.search(request.query, n_results=request.n_results)
+        
+        logger.info(f"🔍 RAG search completed: found {len(results)} results")
+        
+        return {
+            "query": request.query,
+            "results": results,
+            "total": len(results),
+            "timestamp": datetime.now().isoformat()
+        }
     
-    rag = get_rag()
-    results = rag.search(request.query, n_results=request.n_results)
-    
-    return {
-        "query": request.query,
-        "results": results,
-        "total": len(results),
-        "timestamp": datetime.now().isoformat()
-    }
+    except Exception as e:
+        # Детальное логирование ошибки
+        import logging
+        import traceback
+        logger = logging.getLogger("padplus")
+        logger.error(f"❌ Ошибка в /rag/search: {str(e)}")
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
+        
+        # Возвращаем понятный ответ
+        return {
+            "error": f"RAG search failed: {str(e)}",
+            "query": request.query,
+            "total": 0,
+            "results": [],
+            "timestamp": datetime.now().isoformat()
+        }
 
 
 @router.post("/rag/clear")
