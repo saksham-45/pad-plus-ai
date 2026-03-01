@@ -589,20 +589,25 @@ async def rag_stats():
         from pathlib import Path
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from memory.rag import get_rag
+        from core.config_manager import logger
         
+        logger.info("📊 Запрос статистики RAG")
         rag = get_rag()
         stats = rag.get_stats()
         stats["timestamp"] = datetime.now().isoformat()
+        logger.info(f"📊 Статистика RAG получена: {len(stats.get('topic_distribution', {}))} тем, {stats.get('total_dialogs', 0)} диалогов")
         return stats
     except Exception as e:
-        # Логируем ошибку
+        # Детальное логирование ошибки
         import logging
+        import traceback
         logger = logging.getLogger("padplus")
-        logger.error(f"Error in /rag/stats: {str(e)}")
+        logger.error(f"❌ Ошибка в /rag/stats: {str(e)}")
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
         
         # Возвращаем понятный ответ
         return {
-            "error": str(e),
+            "error": f"RAG statistics unavailable: {str(e)}",
             "status": "failed",
             "timestamp": datetime.now().isoformat()
         }

@@ -14,8 +14,12 @@ from enum import Enum
 import json
 import os
 import sqlite3
-import psycopg2
-from typing import Optional
+# Попробуем импортировать psycopg2, но не будем падать если его нет
+try:
+    import psycopg2
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
 import logging
 
 logger = logging.getLogger("neuromind.config")
@@ -345,7 +349,6 @@ class ConfigManager:
     ):
         """Устанавливает значение конфигурации"""
         if key in self._config:
-            old_value = self._config[key].value
             self._config[key].value = value
             self._config[key].source = ConfigSource.RUNTIME
             self._config[key].updated_at = datetime.now()

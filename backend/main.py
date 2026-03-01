@@ -89,10 +89,27 @@ allow_origins = [
     "http://localhost:3000",
     frontend_url
 ]
-# В production добавляем URL из переменной окружения
-if os.getenv("RENDER"):
-    allow_origins.append("https://padplus-ai-frontend.onrender.com")
-    allow_origins.append("https://padplus-ai-backend.onrender.com")
+
+# Автоматическое определение production среды
+is_production = (
+    os.getenv("RENDER") or 
+    os.getenv("RENDER_EXTERNAL_HOSTNAME") or
+    "onrender.com" in str(frontend_url)
+)
+
+if is_production:
+    # Добавляем production URL из переменной окружения
+    if frontend_url and "onrender.com" in frontend_url:
+        allow_origins.append(frontend_url)
+    else:
+        # Резервные варианты для Render
+        allow_origins.extend([
+            "https://padplus-ai-frontend.onrender.com",
+            "https://padplus-ai-backend.onrender.com"
+        ])
+
+logger.info(f"🌐 CORS настроен для origins: {allow_origins}")
+logger.info(f"🏭 Production mode: {is_production}")
 
 app.add_middleware(
     CORSMiddleware,

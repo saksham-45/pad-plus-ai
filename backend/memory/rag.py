@@ -389,25 +389,43 @@ class RAGMemory:
                 "data", "chroma"
             )
         
-        os.makedirs(persist_dir, exist_ok=True)
+        logger.info(f"📁 Инициализация RAG Memory v3.0, директория: {persist_dir}")
+        
+        try:
+            os.makedirs(persist_dir, exist_ok=True)
+            logger.info(f"✅ Директория данных создана: {persist_dir}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка создания директории: {e}")
+            raise
+        
         self.persist_dir = persist_dir
         self.use_llm_summarization = use_llm_summarization
         
-        # Инициализируем ChromaDB
-        self.client = chromadb.PersistentClient(
-            path=persist_dir,
-            settings=Settings(anonymized_telemetry=False)
-        )
+        # Инициализируем ChromaDB с обработкой ошибок
+        try:
+            self.client = chromadb.PersistentClient(
+                path=persist_dir,
+                settings=Settings(anonymized_telemetry=False)
+            )
+            logger.info("✅ ChromaDB клиент инициализирован")
+        except Exception as e:
+            logger.error(f"❌ Ошибка инициализации ChromaDB: {e}")
+            raise
         
-        # Коллекция для диалогов
-        self.collection = self.client.get_or_create_collection(
-            name="neuromind_dialogs_v3",
-            metadata={"description": "История диалогов NeuroMind v3"}
-        )
+        try:
+            # Коллекция для диалогов
+            self.collection = self.client.get_or_create_collection(
+                name="neuromind_dialogs_v3",
+                metadata={"description": "История диалогов NeuroMind v3"}
+            )
+            logger.info(f"✅ Коллекция создана: {self.collection.count()} записей")
+        except Exception as e:
+            logger.error(f"❌ Ошибка создания коллекции: {e}")
+            raise
         
         self._keywords_cache: Dict[str, List[str]] = {}
         
-        logger.info(f"✅ RAG Memory v3.0 инициализирована: {self.collection.count()} записей")
+        logger.info(f"🧠 RAG Memory v3.0 полностью инициализирована")
     
     def add_dialog(
         self, 
