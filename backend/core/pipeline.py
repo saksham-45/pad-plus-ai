@@ -15,10 +15,8 @@ Safety → Intent → Retrieve → Generate → Verify → Remember → Emit
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
 import logging
 import time
-import asyncio
 
 logger = logging.getLogger("neuromind.pipeline")
 
@@ -238,23 +236,19 @@ class PipelineExecutor:
             logger.warning(f"Facts error: {e}")
         
         # Knowledge Graph
-        knowledge_context = ""
         try:
             from knowledge.graph import get_knowledge_graph
-            graph = get_knowledge_graph()
+            get_knowledge_graph()
             # Получаем связанные концепции
-            knowledge_context = ""
         except Exception as e:
             logger.warning(f"Knowledge graph error: {e}")
 
         # === 4.1 EPISODIC MEMORY (похожие ситуации) ===
         episodic_context = ""
-        similar_episodes = []
         try:
             from memory.episodic import get_episodic_memory
             episodic = get_episodic_memory()
             similar = episodic.search_episodes(user_message, limit=2)
-            similar_episodes = similar
 
             if similar:
                 episodic_context = "\n\n📜 Похожие ситуации из прошлого:\n"
@@ -387,7 +381,7 @@ class PipelineExecutor:
         try:
             from core.truth_loop import get_truth_loop
             truth = get_truth_loop()
-            verification = truth.verify(response)
+            verification = truth.verify(result.response)
             result.truth_confidence = verification.get("overall_confidence", 0.5)
             result.claims_verified = len(verification.get("claims", []))
         except Exception as e:
@@ -399,7 +393,7 @@ class PipelineExecutor:
             rag = get_rag()
             rag.add_dialog(
                 user_message=user_message,
-                ai_response=response,
+                ai_response=result.response,
                 metadata={
                     "intent": intent,
                     "provider": result.provider,
@@ -425,7 +419,7 @@ class PipelineExecutor:
 
             episode = episodic.add_episode(
                 user_message=user_message,
-                ai_response=response,
+                ai_response=result.response,
                 topic=intent,
                 intent=intent,
                 significance=min(significance, 1.0),
@@ -467,7 +461,7 @@ class PipelineExecutor:
             from emotion.pad_model import get_pad_model
             pad = get_pad_model()
             # Обновляем эмоцию на основе диалога
-            if "ошибка" in response.lower() or "проблема" in response.lower():
+            if "ошибка" in result.response.lower() or "проблема" in result.response.lower():
                 pad.apply_event("fallback", 0.2)
             else:
                 pad.apply_event("new_knowledge", 0.2)
@@ -481,7 +475,7 @@ class PipelineExecutor:
             # Эволюция личности на основе диалога
             evolution = persona.evolve_from_dialog(
                 user_message=user_message,
-                ai_response=response
+                ai_response=result.response
             )
             result.metadata["persona_evolution"] = evolution["changes"]
         except Exception as e:
