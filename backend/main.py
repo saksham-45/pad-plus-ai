@@ -107,6 +107,15 @@ if is_production:
             "https://padplus-ai-frontend.onrender.com",
             "https://padplus-ai-backend.onrender.com"
         ])
+else:
+    # Для локальной разработки добавляем дополнительные origins
+    allow_origins.extend([
+        "http://127.0.0.1:5173",
+        "http://0.0.0.0:5173"
+    ])
+
+# Убедимся, что все origins уникальны
+allow_origins = list(set(allow_origins))
 
 logger.info(f"🌐 CORS настроен для origins: {allow_origins}")
 logger.info(f"🏭 Production mode: {is_production}")
