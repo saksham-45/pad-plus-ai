@@ -17,9 +17,11 @@ const Settings = ({ onClose }) => {
     loadProviders();
   }, []);
 
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
   const loadProviders = async () => {
     try {
-      const response = await fetch('/api/v1/llm/providers');
+      const response = await fetch(`${API_URL}/api/v1/llm/providers`);
       if (response.ok) {
         const data = await response.json();
         setProviders(data.providers);
@@ -31,7 +33,7 @@ const Settings = ({ onClose }) => {
 
   const loadModels = async (provider) => {
     try {
-      const response = await fetch(`/api/v1/llm/models?provider=${provider}`);
+      const response = await fetch(`${API_URL}/api/v1/llm/models?provider=${provider}`);
       if (response.ok) {
         const data = await response.json();
         setModels(data.models);
@@ -68,7 +70,7 @@ const Settings = ({ onClose }) => {
     setSuccess('');
     
     try {
-      const response = await fetch(`/api/v1/llm/test/${provider}`, {
+      const response = await fetch(`${API_URL}/api/v1/llm/test/${provider}`, {
         method: 'POST'
       });
       const data = await response.json();
@@ -91,7 +93,7 @@ const Settings = ({ onClose }) => {
     setSuccess('');
     
     try {
-      const response = await fetch('/api/v1/llm/config', {
+      const response = await fetch(`${API_URL}/api/v1/llm/config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

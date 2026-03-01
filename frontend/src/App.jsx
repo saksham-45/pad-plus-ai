@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import './App.css'
 import Settings from './Settings'
 
-const API_URL = 'http://localhost:8000'
-const WS_URL = 'ws://127.0.0.1:8000/ws'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/^http/, 'ws') + '/ws'
 
 function App() {
   const [activeTab, setActiveTab] = useState('chat')
