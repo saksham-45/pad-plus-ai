@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python *)",
+      "Bash(type *)",
+      "Bash(timeout *)",
+      "Bash(curl *)",
+      "Bash(netstat *)",
+      "Bash(findstr *)",
+      "Bash(venv\\scripts\\python *)",
+      "Bash(taskkill *)",
+      "Bash(start.bat)",
+      "Bash(do *)",
+      "Bash(@echo *)",
+      "Bash(echo.)",
+      "Bash(del *)",
+      "Bash(dir *)",
+      "Bash(else)",
+      "Bash(mkdir *)",
+      "Bash(powershell *)",
+      "Bash(git checkout *)",
+      "Bash(venv\\scripts\\pip *)",
+      "Bash(d *)",
+      "Bash(@if *)",
+      "Bash(pip uninstall *)",
+      "Bash(rmdir *)",
+      "Bash(\"c:\\users\\1\\appdata\\local\\programs\\python\\python310\\python.exe\" *)",
+      "Bash(npm run *)"
+    ]
+  },
+  "$version": 3
+}

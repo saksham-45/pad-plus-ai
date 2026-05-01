@@ -1,5 +1,5 @@
 """
-🔁 TruthLoop — Контур истины NeuroMind AI
+🔁 TruthLoop — Контур истины PAD+ AI
 
 Верификация утверждений и проверка достоверности.
 
@@ -21,7 +21,7 @@ import os
 import sqlite3
 import logging
 
-logger = logging.getLogger("neuromind.truth")
+logger = logging.getLogger("PAD+.truth")
 
 
 class ClaimStatus(Enum):

@@ -12,37 +12,45 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Tuple
 from datetime import datetime
 
-import aioredis
 from cachetools import TTLCache
 
 from core.config_manager import get_config
 
 logger = logging.getLogger("padplus.cache")
 
+# Опциональный импорт aioredis (может не работать на Python 3.14+)
+try:
+    import aioredis
+    HAS_AIOREDIS = True
+except (ImportError, TypeError):
+    aioredis = None
+    HAS_AIOREDIS = False
+    logger.warning("aioredis недоступен, используем только in-memory кэш")
+
 
 class CacheManager:
     """
     🗄️ Менеджер кэширования
-    
+
     Предоставляет многоуровневое кэширование:
     - L1: In-memory cache (TTLCache)
     - L2: Redis cache (persistent)
     """
-    
+
     def __init__(self):
         self.config = get_config()
         self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        self.redis: Optional[aioredis.Redis] = None
-        
+        self.redis = None  # type: Optional[Any]
+
         # In-memory cache (L1)
         self.memory_cache = TTLCache(
             maxsize=1000,
             ttl=self.config.get("cache.ttl", 3600)
         )
-        
+
         # Статистика
         self.stats = {
             "memory_hits": 0,
@@ -52,18 +60,38 @@ class CacheManager:
             "sets": 0,
             "deletes": 0
         }
-    
+
     async def connect(self):
         """Подключается к Redis"""
+        if not HAS_AIOREDIS:
+            logger.warning("⚠️ aioredis недоступен, используем только in-memory кэш")
+            logger.info("💡 Для включения Redis установите: pip install redis")
+            return
+        
         try:
+            # Парсим URL для детального логирования
+            from urllib.parse import urlparse
+            parsed = urlparse(self.redis_url)
+            redis_host = parsed.hostname or "localhost"
+            redis_port = parsed.port or 6379
+            
+            logger.info(f"🔌 Подключение к Redis: {redis_host}:{redis_port}...")
+            
             self.redis = await aioredis.from_url(
                 self.redis_url,
                 encoding="utf-8",
-                decode_responses=True
+                decode_responses=True,
+                socket_connect_timeout=5,
+                socket_keepalive=True
             )
-            logger.info("🗄️ Redis подключен")
+            
+            # Проверяем подключение
+            await self.redis.ping()
+            logger.info(f"✅ Redis подключен: {redis_host}:{redis_port}")
+            
         except Exception as e:
-            logger.error(f"❌ Ошибка подключения к Redis: {e}")
+            logger.error(f"❌ Ошибка подключения к Redis ({self.redis_url}): {e}")
+            logger.warning("⚠️ Используем только in-memory кэш")
             self.redis = None
     
     async def disconnect(self):
@@ -271,33 +299,53 @@ class CacheManager:
         logger.debug(f"🗄️ Session deleted: {session_id}")
     
     # === Rate Limiting ===
-    async def is_rate_limited(self, key: str, limit: int, window: int) -> bool:
-        """Проверяет rate limit"""
+    async def is_rate_limited(
+        self, 
+        key: str, 
+        limit: int = 10, 
+        window: int = 60
+    ) -> Tuple[bool, int]:
+        """
+        Проверяет rate limit
+        
+        Args:
+            key: Уникальный ключ (например, user_id)
+            limit: Максимальное количество запросов
+            window: Окно времени в секундах
+        
+        Returns:
+            (is_limited, remaining_requests)
+        """
         cache_key = f"rate_limit:{key}"
         current_time = int(time.time())
         window_start = current_time - window
-        
+
         try:
             # Получаем текущие запросы
             requests = await self.get_redis("rate_limit", cache_key)
             if not requests:
                 requests = []
-            
+
             # Фильтруем запросы в пределах окна
             requests = [req for req in requests if req > window_start]
-            
+
             # Проверяем лимит
-            if len(requests) >= limit:
-                return True
+            current_count = len(requests)
+            remaining = max(0, limit - current_count)
             
+            if current_count >= limit:
+                return (True, 0)
+
             # Добавляем новый запрос
             requests.append(current_time)
             await self.set_redis("rate_limit", cache_key, requests, window)
-            return False
             
+            return (False, remaining - 1)
+
         except Exception as e:
             logger.error(f"❌ Ошибка rate limiting: {e}")
-            return False
+            # При ошибке не блокируем
+            return (False, limit)
     
     # === Statistics ===
     def get_stats(self) -> Dict[str, Any]:

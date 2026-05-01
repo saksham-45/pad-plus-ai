@@ -17,7 +17,7 @@ import zipfile
 import tempfile
 import logging
 
-logger = logging.getLogger("neuromind.data_manager")
+logger = logging.getLogger("PAD+.data_manager")
 
 
 class DataCategory(Enum):
@@ -288,7 +288,7 @@ class DataManager:
         # Генерируем имя файла
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"neuromind_backup_{timestamp}.zip"
+            filename = f"PAD+_backup_{timestamp}.zip"
         
         filepath = os.path.join(self.export_dir, filename)
         
@@ -299,7 +299,7 @@ class DataManager:
             zf.writestr("data.json", json_data)
             
             # Добавляем README
-            readme = f"""# NeuroMind AI Backup
+            readme = f"""# PAD+ AI Backup
 
 Версия: {self.VERSION}
 Дата: {metadata.exported_at.isoformat()}

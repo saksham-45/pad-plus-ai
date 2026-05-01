@@ -1,5 +1,5 @@
 """
-🧹 Memory Hygiene — Гигиена памяти NeuroMind AI
+🧹 Memory Hygiene — Гигиена памяти PAD+ AI
 
 Ключ к реальной памяти — не просто сохранять всё, а:
 - Dedupe (удаление дубликатов)
@@ -18,7 +18,7 @@ import json
 import logging
 import re
 
-logger = logging.getLogger("neuromind.hygiene")
+logger = logging.getLogger("PAD+.hygiene")
 
 
 @dataclass

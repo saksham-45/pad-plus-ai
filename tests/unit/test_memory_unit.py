@@ -12,7 +12,7 @@ class TestMemory:
     
     def test_smartcache_store_and_retrieve(self, mock_memory_record):
         """Тест хранения и извлечения из SmartCache"""
-        with patch('memory.smartcache.get_husk_cache') as mock_get_cache:
+        with patch('backend.memory.smartcache_chroma.get_husk_cache') as mock_get_cache:
             mock_cache = Mock()
             mock_get_cache.return_value = mock_cache
             
@@ -32,7 +32,7 @@ class TestMemory:
     
     def test_vectormemory_store_and_delete(self, mock_memory_record):
         """Тест хранения и удаления из VectorMemory"""
-        with patch('memory.vectormemory.get_soil_memory') as mock_get_memory:
+        with patch('backend.memory.vector_memory_chroma.get_soil_memory') as mock_get_memory:
             mock_memory = Mock()
             mock_get_memory.return_value = mock_memory
             

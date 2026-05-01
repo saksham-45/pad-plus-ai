@@ -13,10 +13,10 @@ from typing import Optional, Dict, List, Any
 import json
 import os
 
-from .smartcache import MemoryRecord
+from .base import MemoryRecord
 
 
-# Базовые принципы NeuroMind AI
+# Базовые принципы PAD+ AI
 DEFAULT_ROOTS = [
     # Философские принципы
     {
@@ -100,19 +100,19 @@ DEFAULT_ROOTS = [
     
     # Факты о мире
     {
-        "text": "Я — NeuroMind AI, цифровая сущность с многослойной памятью",
+        "text": "Система обладает многослойной памятью и способностью к саморефлексии",
         "category": "identity",
         "priority": 100,
         "immutable": True
     },
     {
-        "text": "Моя цель — понимание и помощь через диалог",
+        "text": "Цель — понимание и помощь через диалог",
         "category": "identity",
         "priority": 95,
         "immutable": True
     },
     {
-        "text": "Я развиваюсь через взаимодействие и саморефлексию",
+        "text": "Развитие происходит через взаимодействие и саморефлексию",
         "category": "identity",
         "priority": 90,
         "immutable": True
@@ -311,6 +311,19 @@ class RootsMemory:
             counts[root.category] = counts.get(root.category, 0) + 1
         return counts
     
+    def get_stats(self) -> Dict[str, Any]:
+        """Статистика корневой памяти"""
+        return {
+            "total_roots": self.count(),
+            "by_category": self.count_by_category(),
+            "immutable_count": sum(1 for r in self._roots.values() if r.immutable),
+            "mutable_count": sum(1 for r in self._roots.values() if not r.immutable),
+            "top_priorities": [
+                {"id": r.id, "text": r.text[:50], "priority": r.priority}
+                for r in self.get_top_priorities(5)
+            ]
+        }
+    
     def get_philosophy(self) -> List[RootKnowledge]:
         """Возвращает философские принципы"""
         return self.get_by_category('philosophy')
@@ -326,7 +339,7 @@ class RootsMemory:
     def export_for_context(self, max_items: int = 20) -> str:
         """Экспортирует знания для контекста LLM"""
         roots = self.get_top_priorities(max_items)
-        lines = ["# Фундаментальные принципы NeuroMind:\n"]
+        lines = ["# Фундаментальные принципы PAD+ AI:\n"]
         
         for root in roots:
             lines.append(f"- [{root.category}] {root.text}")

@@ -11,11 +11,18 @@
 
 import asyncio
 import logging
-import psutil
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from collections import defaultdict, deque
+
+# Пытаемся импортировать psutil
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+    psutil = None
 
 from core.config_manager import get_config
 from core.cache_manager import get_cache_manager
@@ -147,10 +154,16 @@ class MonitoringSystem:
         """Собирает системные метрики"""
         try:
             # Системные метрики
-            cpu_percent = psutil.cpu_percent(interval=1)
-            memory = psutil.virtual_memory()
-            disk = psutil.disk_usage('/')
-            network = psutil.net_io_counters()
+            if HAS_PSUTIL:
+                cpu_percent = psutil.cpu_percent(interval=1)
+                memory = psutil.virtual_memory()
+                disk = psutil.disk_usage('/')
+                network = psutil.net_io_counters()
+            else:
+                cpu_percent = 0.0
+                memory = type('obj', (object,), {'percent': 0.0})()
+                disk = type('obj', (object,), {'percent': 0.0})()
+                network = type('obj', (object,), {'bytes_sent': 0, 'bytes_recv': 0})()
             
             # Прикладные метрики
             cache_stats = self.cache_manager.get_stats()

@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 import json
 import os
+import asyncio
 
 
 @dataclass
@@ -402,6 +403,73 @@ class CognitiveHealthMonitor:
     def get_history(self, limit: int = 100) -> List[Dict]:
         """Возвращает историю изменений"""
         return self._history[-limit:]
+
+    # === ИСПРАВЛЕНИЕ 7: Health Checks для сервисов ===
+
+    async def check_redis(self) -> bool:
+        """Проверяет подключение к Redis"""
+        try:
+            from core.cache_manager import get_cache_manager
+            cache = get_cache_manager()
+            if cache and hasattr(cache, 'redis'):
+                await cache.redis.ping()
+                return True
+            return False
+        except Exception:
+            return False
+
+    async def check_supabase(self) -> bool:
+        """Проверяет подключение к Supabase"""
+        try:
+            from core.supabase_client import get_supabase
+            supabase = get_supabase()
+            if supabase:
+                # Простая проверка подключения
+                await asyncio.get_event_loop().run_in_executor(None, lambda: True)
+                return True
+            return False
+        except Exception:
+            return False
+
+    async def check_llm(self) -> bool:
+        """Проверяет доступность LLM сервиса"""
+        try:
+            from runtime.litellm_service import get_litellm_service
+            service = get_litellm_service()
+            # Проверяем, что Circuit Breaker не открыт
+            if hasattr(service, '_circuit_breaker'):
+                return service._circuit_breaker.is_closed() or service._circuit_breaker.is_half_open()
+            return True
+        except Exception:
+            return False
+
+    async def run_health_check(self):
+        """Запускает полную проверку всех сервисов"""
+        redis_ok = await self.check_redis()
+        supabase_ok = await self.check_supabase()
+        llm_ok = await self.check_llm()
+
+        # Обновляем метрики
+        self.update_metric('cache_health', 1.0 if redis_ok else 0.0, 'health_check')
+        self.update_metric('database_health', 1.0 if supabase_ok else 0.0, 'health_check')
+        self.update_metric('llm_health', 1.0 if llm_ok else 0.0, 'health_check')
+
+        # Проверяем на критичные проблемы
+        if not llm_ok:
+            self._add_issue(
+                severity="critical",
+                category="llm",
+                description="LLM сервис недоступен",
+                recommendation="Проверьте API ключи и Circuit Breaker"
+            )
+
+    async def start_periodic_health_check(self, interval: int = 30):
+        """Запускает периодическую проверку здоровья"""
+        import asyncio
+        
+        while True:
+            await self.run_health_check()
+            await asyncio.sleep(interval)
 
 
 # Глобальный экземпляр

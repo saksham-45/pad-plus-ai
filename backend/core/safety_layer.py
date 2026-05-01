@@ -1,5 +1,5 @@
 """
-🛡️ SafetyLayer — Слой безопасности NeuroMind AI
+🛡️ SafetyLayer — Слой безопасности PAD+ AI
 
 Защита системы:
 - Фильтрация опасных запросов
@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 import re
 import logging
 
-logger = logging.getLogger("neuromind.safety")
+logger = logging.getLogger("PAD+.safety")
 
 
 class RiskLevel(Enum):
