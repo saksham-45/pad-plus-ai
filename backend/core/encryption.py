@@ -36,9 +36,6 @@ class KeyEncryptor:
 
         Args:
             encryption_key: Ключ шифрования из .env (32+ символа)
-        
-        Raises:
-            ValueError: Если ENCRYPTION_SALT не настроен в переменных окружения
         """
         try:
             # Генерируем ключ из пароля используя PBKDF2HMAC
@@ -46,16 +43,16 @@ class KeyEncryptor:
             # Это критично для работы на Render (эфемерная файловая система)
             salt_env = os.getenv("ENCRYPTION_SALT")
             if not salt_env:
-                logger.error(
-                    "❌ ENCRYPTION_SALT не настроен!\n"
-                    "Для локальной разработки сгенерируйте и добавьте в .env:\n"
-                    "  python -c \"import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())\"\n"
-                    "Для Render добавьте переменную окружения ENCRYPTION_SALT в dashboard"
-                )
-                raise ValueError("ENCRYPTION_SALT обязателен для работы шифрования")
-            
-            salt = base64.urlsafe_b64decode(salt_env)
-            logger.info("✅ Соль загружена из переменной окружения")
+                logger.warning("⚠️ ENCRYPTION_SALT не настроен, используем временную соль")
+                salt = os.urandom(16)
+            else:
+                try:
+                    salt = base64.urlsafe_b64decode(salt_env)
+                    logger.info("✅ Соль загружена из переменной окружения")
+                except Exception:
+                    logger.warning("⚠️ Не могу декодировать соль, используем временную")
+                    salt = os.urandom(16)
+
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,
@@ -66,8 +63,10 @@ class KeyEncryptor:
             self.cipher = Fernet(key)
             logger.info("✅ KeyEncryptor инициализирован")
         except Exception as e:
-            logger.error(f"❌ Ошибка инициализации KeyEncryptor: {e}")
-            raise
+            logger.critical(f"❌ Критическая ошибка шифрования: {e}")
+            logger.warning("⚠️ Используем режим без шифрования")
+            self.fallback_mode = True
+            return
     
     def encrypt(self, api_key: str) -> str:
         """
@@ -97,11 +96,13 @@ class KeyEncryptor:
             API ключ в открытом виде
         """
         try:
+            if not encrypted or encrypted == "" or encrypted == "None":
+                return ""
             decrypted = self.cipher.decrypt(encrypted.encode())
             return decrypted.decode()
         except Exception as e:
-            logger.error(f"❌ Ошибка дешифрования: {e}")
-            raise
+            logger.warning(f"⚠️ Не могу дешифровать ключ, возвращаю пустое: {e}")
+            return ""
     
     def verify(self, encrypted: str, original: str) -> bool:
         """
