@@ -12,15 +12,11 @@ export function Auth({ onAuthSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // 🔹 Динамический базовый URL для API (работает локально и на Render)
-    const API_BASE = import.meta.env.VITE_API_URL || '';
-    const endpoint = `${API_BASE}${mode === 'login' ? '/api/v1/auth/login' : '/api/v1/auth/register'}`;
-    
     setError('');
     setLoading(true);
 
     try {
+      const endpoint = mode === 'login' ? '/api/v1/auth/login' : '/api/v1/auth/register';
       const body = mode === 'login' 
         ? { email, password }
         : { email, password, full_name: fullName };

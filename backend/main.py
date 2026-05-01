@@ -106,6 +106,49 @@ async def lifespan(app: FastAPI):
     logger.info("✅ Cache manager отключен")
 
 
+# CORS middleware — настройка для production
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5174")
+backend_port = int(os.getenv("BACKEND_PORT", "8080"))
+
+# CSRF защита
+csrf_secret_key = os.getenv("CSRF_SECRET_KEY")
+allow_origins = [
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:3000",
+    frontend_url
+]
+
+# Автоматическое определение production среды
+is_production = (
+    os.getenv("RENDER") or 
+    os.getenv("RENDER_EXTERNAL_HOSTNAME") or
+    "onrender.com" in str(frontend_url)
+)
+
+if is_production:
+    # Добавляем production URL из переменной окружения
+    if frontend_url and "onrender.com" in frontend_url:
+        allow_origins.append(frontend_url)
+    else:
+        # Резервные варианты для Render
+        allow_origins.extend([
+            "https://padplus-ai-frontend.onrender.com",
+            "https://padplus-ai-backend.onrender.com"
+        ])
+else:
+    # Для локальной разработки добавляем дополнительные origins
+    allow_origins.extend([
+        "http://127.0.0.1:5173",
+        "http://localhost:5173"
+    ])
+
+# Убедимся, что все origins уникальны
+allow_origins = list(set(allow_origins))
+
+logger.info(f"🌐 CORS настроен для origins: {allow_origins}")
+logger.info(f"🏭 Production mode: {is_production}")
+
 # Создание приложения
 app = FastAPI(
     title="PAD+ AI",
@@ -116,36 +159,83 @@ app = FastAPI(
 
 
 # ============================================================================
-# 🔹 CORS MIDDLEWARE — ДОБАВЛЕН СРАЗУ ПОСЛЕ СОЗДАНИЯ app
+# VALIDATION & SANITIZATION MIDDLEWARE
 # ============================================================================
 
-# Разрешённые источники (CORS) — для локальной разработки и Render
-allow_origins = [
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    # Render домены
-    "https://pad-ai-v3-5.onrender.com",
-    "https://pad-ai-backend.onrender.com",
-    "https://padplus-ai-frontend.onrender.com",
-    "https://padplus-ai-backend.onrender.com",
-    # wildcard для *.onrender.com (для тестов)
-    "https://*.onrender.com",
-]
+from core.validation_middleware import ValidationMiddleware
 
-# Добавляем FRONTEND_URL из .env, если задан
-frontend_url = os.getenv("FRONTEND_URL")
-if frontend_url and frontend_url not in allow_origins:
-    allow_origins.append(frontend_url)
+# Добавляем middleware валидации и санитизации запросов
+# Должен быть добавлен ДО CORS middleware для корректной обработки
+app.add_middleware(
+    ValidationMiddleware,
+    max_body_length=50 * 1024 * 1024,  # 50MB лимит тела запроса (для загрузки файлов)
+    max_query_length=1000,   # 1KB лимит query параметра
+    block_threats=True,      # Блокировать запросы с угрозами
+    exclude_paths=[
+        "/metrics",
+        "/health",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+        "/api/v1/documents/upload",  # Исключаем загрузку файлов из проверки размера
+    ]
+)
 
-# Убираем дубликаты
-allow_origins = list(set(allow_origins))
+logger.info("🛡️ ValidationMiddleware установлен")
 
-logger.info(f"🌐 CORS настроен для {len(allow_origins)} origins")
+# Добавляем CSRF middleware для защиты от межсайтовой подделки запросов
+from core.csrf_middleware import CSRFMiddleware
 
-# 🔹 Добавляем CORS middleware СРАЗУ после создания app (до других middleware!)
+app.add_middleware(
+    CSRFMiddleware,
+    secret_key=csrf_secret_key,
+    cookie_secure=False,  # Включить в production (HTTPS)
+    cookie_httponly=True,
+    cookie_samesite="lax",
+)
+
+logger.info("🛡️ CSRFMiddleware установлен")
+
+
+# ПРИНУДИТЕЛЬНЫЕ CORS-ЗАГОЛОВКИ (для всех ответов, даже при ошибках)
+@app.middleware("http")
+async def force_cors_headers(request, call_next):
+    """Принудительно добавляет CORS-заголовки к КАЖДОМУ ответу, даже при ошибках"""
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        # Если произошла ошибка в обработке, создаем response с ошибкой
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": "Internal Server Error", "error": str(e)}
+        )
+    
+    # ПРИНУДИТЕЛЬНО добавляем CORS-заголовки к любому ответу
+    origin = request.headers.get("origin")
+    if origin and origin in allow_origins:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    else:
+        # Если origin не в списке, используем первый разрешенный
+        response.headers["Access-Control-Allow-Origin"] = (
+            allow_origins[0] if allow_origins else "*"
+        )
+    
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = (
+        "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+    )
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, Authorization"
+    )
+    
+    # Обработка preflight запросов OPTIONS
+    if request.method == "OPTIONS":
+        return response
+    
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
@@ -155,67 +245,36 @@ app.add_middleware(
 )
 
 
-# ============================================================================
-# VALIDATION & SANITIZATION MIDDLEWARE
-# ============================================================================
-
-from core.validation_middleware import ValidationMiddleware
-
-# Добавляем middleware валидации и санитизации запросов
-app.add_middleware(
-    ValidationMiddleware,
-    max_body_length=50 * 1024 * 1024,  # 50MB лимит тела запроса
-    max_query_length=1000,
-    block_threats=True,
-    exclude_paths=[
-        "/metrics",
-        "/health",
-        "/docs",
-        "/openapi.json",
-        "/redoc",
-        "/api/v1/documents/upload",
-    ]
-)
-
-logger.info("🛡️ ValidationMiddleware установлен")
-
-# Добавляем CSRF middleware
-from core.csrf_middleware import CSRFMiddleware
-csrf_secret_key = os.getenv("CSRF_SECRET_KEY")
-
-app.add_middleware(
-    CSRFMiddleware,
-    secret_key=csrf_secret_key,
-    cookie_secure=False,
-    cookie_httponly=True,
-    cookie_samesite="lax",
-)
-
-logger.info("🛡️ CSRFMiddleware установлен")
-
-
 # Подключение роутов
-from api.frontend_routes import router as frontend_router
-app.include_router(frontend_router)
+# app.include_router(routes.router, prefix="/api/v1")  # Закомментировано - используем frontend_router
 
+# Подключение роутов for frontend (аутентификация, ключи, чат)
+from api.frontend_routes import router as frontend_router
+app.include_router(frontend_router)  # Без префикса - уже есть в router
+
+# Подключение роутов для управления пользователями и настройками
 from api.user_routes import router as user_router
 app.include_router(user_router)
 
+# Подключение роутов для истории диалогов
 from api.dialog_routes import router as dialog_router
 app.include_router(dialog_router)
 
+# Подключение роутов для управления документами и коллекциями
 from api.document_routes import router as document_router
 app.include_router(document_router)
 
+# Подключение роутов для управления файлами (ДОБАВЛЕНО ПОСЛЕ document_routes)
 from api.file_routes import router as file_router
 app.include_router(file_router)
 
+# Подключение X-Ray routes (система полной наблюдаемости)
 from api.xray_routes import router as xray_router
 app.include_router(xray_router)
 
+# Подключение Metrics routes (мониторинг и метрики)
 from api.metrics_routes import router as metrics_router
 app.include_router(metrics_router)
-
 
 # === WEBSOCKET CONNECTION MANAGER ===
 class ConnectionManager:
@@ -225,6 +284,7 @@ class ConnectionManager:
         self.active_connections: List[WebSocket] = []
     
     async def connect(self, websocket: WebSocket):
+        """Принять новое соединение"""
         try:
             await websocket.accept()
             self.active_connections.append(websocket)
@@ -234,6 +294,7 @@ class ConnectionManager:
             raise
     
     def disconnect(self, websocket: WebSocket):
+        """Отключить соединение"""
         try:
             if websocket in self.active_connections:
                 self.active_connections.remove(websocket)
@@ -242,8 +303,9 @@ class ConnectionManager:
             logger.error(f"🔴 Ошибка отключения WebSocket: {e}", exc_info=True)
     
     async def broadcast(self, message: dict):
+        """Разослать сообщение всем клиентам"""
         errors = []
-        for connection in self.active_connections[:]:
+        for connection in self.active_connections[:]:  # Копия списка для безопасности
             try:
                 await connection.send_json(message)
             except Exception as e:
@@ -255,9 +317,11 @@ class ConnectionManager:
             logger.warning(f"🔴 Все WebSocket соединения неактивны ({len(errors)} ошибок)")
     
     async def send_personal(self, websocket: WebSocket, message: dict):
+        """Отправить личное сообщение"""
         try:
             await websocket.send_json(message)
         except RuntimeError as e:
+            # WebSocket закрыт
             logger.warning(f"🟡 WebSocket закрыт во время отправки: {e}")
         except Exception as e:
             logger.error(f"🔴 Ошибка отправки WebSocket: {e}", exc_info=True)
@@ -270,47 +334,60 @@ manager = ConnectionManager()
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket эндпоинт для real-time обновлений"""
+    # Принимаем соединение сразу без проверок для того чтобы клиент мог подключиться
     await websocket.accept()
     manager.active_connections.append(websocket)
     logger.info(f"📡 WebSocket подключен. Всего: {len(manager.active_connections)}")
 
     try:
+        # Отправляем начальное состояние
         await manager.send_personal(websocket, {
             "type": "connected",
             "message": "Connected to PAD+ AI",
             "timestamp": datetime.now().isoformat()
         })
 
+        # Подписываемся на события
         try:
             from core.event_bus import get_event_bus, EventType
             bus = get_event_bus()
 
             async def on_mind_state_update(event):
+                """Отправляем mind_state_update при событии"""
                 state = {"type": "mind_state_update"}
+
+                # Эмоции
                 try:
                     from emotion.pad_model import get_pad_model
                     pad = get_pad_model()
                     state["emotion"] = pad.get_state().to_dict()
                 except:
                     pass
+
+                # RAG
                 try:
                     from memory.rag import get_rag
                     rag = get_rag()
                     state["memory"] = {"rag": rag.get_stats()}
                 except:
                     pass
+
+                # Knowledge Graph
                 try:
                     from knowledge.graph import get_knowledge_graph
                     g = get_knowledge_graph()
                     state["knowledge"] = g.get_stats()
                 except:
                     pass
+
+                # Health
                 try:
                     from core.health_monitor import get_health_monitor
                     health = get_health_monitor()
                     state["health"] = health.assess_health()
                 except:
                     pass
+
                 await manager.broadcast(state)
 
             bus.subscribe_async(EventType.MIND_STATE_UPDATE, on_mind_state_update)
@@ -318,26 +395,38 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.warning(f"EventBus subscription error: {e}")
 
         while True:
+            # Получаем сообщение
             data = await websocket.receive_text()
+            
             try:
                 message = json.loads(data)
                 msg_type = message.get("type", "unknown")
                 
+                # Обработка разных типов сообщений
                 if msg_type == "ping":
                     await manager.send_personal(websocket, {
                         "type": "pong",
                         "timestamp": datetime.now().isoformat()
                     })
+                
                 elif msg_type == "pong":
+                    # Heartbeat response — обновляем last activity
+                    # WebSocketManager автоматически отслеживает активность
                     pass
+
                 elif msg_type == "subscribe":
+                    # Подписка на обновления
                     channels = message.get("channels", ["all"])
-                    await manager.send_personal(websocket, {
-                        "type": "subscribed",
-                        "channels": channels,
-                        "timestamp": datetime.now().isoformat()
-                    })
+                    await manager.send_personal(
+                        websocket, {
+                            "type": "subscribed",
+                            "channels": channels,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    )
+                
                 elif msg_type == "chat":
+                    # Обработка чата через WebSocket
                     prompt = message.get("prompt", "")
                     if prompt:
                         from core.pipeline import get_pipeline
@@ -354,19 +443,25 @@ async def websocket_endpoint(websocket: WebSocket):
                             "success": result.success,
                             "timestamp": datetime.now().isoformat()
                         })
+                
                 elif msg_type == "get_state":
+                    # Получить текущее состояние
                     state = await get_mind_state()
-                    await manager.send_personal(websocket, {
-                        "type": "mind_state",
-                        "state": state,
-                        "timestamp": datetime.now().isoformat()
-                    })
+                    await manager.send_personal(
+                        websocket, {
+                            "type": "mind_state",
+                            "state": state,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    )
+                
                 else:
                     await manager.send_personal(websocket, {
                         "type": "error",
                         "message": f"Unknown message type: {msg_type}",
                         "timestamp": datetime.now().isoformat()
                     })
+            
             except json.JSONDecodeError:
                 await manager.send_personal(websocket, {
                     "type": "error",
@@ -397,18 +492,21 @@ async def get_mind_state() -> dict:
         state["emotion"] = pad.get_state().to_dict()
     except Exception:
         pass
+    
     try:
         from memory.rag import get_rag
         rag = get_rag()
         state["memory"]["rag"] = rag.get_stats()
     except Exception:
         pass
+    
     try:
         from knowledge.graph import get_knowledge_graph
         graph = get_knowledge_graph()
         state["knowledge"] = graph.get_stats()
     except Exception:
         pass
+    
     try:
         from core.safety_layer import get_safety_layer
         safety = get_safety_layer()
@@ -419,7 +517,37 @@ async def get_mind_state() -> dict:
     return state
 
 
-# Корневой эндпоинт
+# === BROADCAST FUNCTIONS ===
+async def broadcast_emotion_update(emotion_state: dict):
+    """Разослать обновление эмоций"""
+    await manager.broadcast({
+        "type": "emotion_update",
+        "state": emotion_state,
+        "timestamp": datetime.now().isoformat()
+    })
+
+
+async def broadcast_memory_update(memory_type: str, data: dict):
+    """Разослать обновление памяти"""
+    await manager.broadcast({
+        "type": "memory_update",
+        "memory_type": memory_type,
+        "data": data,
+        "timestamp": datetime.now().isoformat()
+    })
+
+
+async def broadcast_autonomy_event(event: str, data: dict):
+    """Разослать событие автономии"""
+    await manager.broadcast({
+        "type": "autonomy_event",
+        "event": event,
+        "data": data,
+        "timestamp": datetime.now().isoformat()
+    })
+
+
+# Корневой эндпоинт — теперь отдает frontend
 @app.get("/")
 async def root():
     """Корневой эндпоинт — отдает frontend"""
@@ -458,25 +586,31 @@ async def get_anti_directive():
     }
 
 
-# === MOUNT FRONTEND STATIC FILES ===
+# === MOUNT FRONTEND STATIC FILES (в конце, после всех API endpoints) ===
+# Путь к собранному frontend
 frontend_dist_path = Path(__file__).parent.parent / "frontend" / "dist"
 
 if frontend_dist_path.exists():
+    # Монтируем статику для /assets
     app.mount("/assets", StaticFiles(directory=str(frontend_dist_path / "assets")), name="assets")
     
+    # Catch-all для frontend SPA (должен быть ПОСЛЕ всех API routes)
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         """Отдаем frontend для всех не-API запросов"""
+        # Игнорируем API и WebSocket запросы
         if (full_path.startswith("api/") or 
             full_path.startswith("ws") or
             full_path == "health" or
             full_path == "anti-directive"):
             return {"error": "Not found"}
         
+        # Если запрошен файл, пробуем отдать его
         file_path = frontend_dist_path / full_path
         if file_path.exists() and file_path.is_file():
             return FileResponse(str(file_path))
         
+        # Иначе отдаем index.html (для SPA роутинга)
         index_path = frontend_dist_path / "index.html"
         if index_path.exists():
             return FileResponse(str(index_path))
@@ -486,12 +620,23 @@ else:
     logger.warning(f"⚠️ Frontend dist не найден: {frontend_dist_path}")
 
 
-# Prometheus metrics
+# ============================================================================
+# PROMETHEUS METRICS
+# ============================================================================
+
 @app.get("/metrics")
 async def metrics():
-    """Prometheus metrics endpoint"""
+    """
+    Prometheus metrics endpoint
+    
+    Returns:
+        Метрики в формате Prometheus
+    """
     from core.metrics import get_metrics, get_metrics_content_type, update_memory_usage
+    
+    # Обновляем метрики
     update_memory_usage()
+    
     return Response(
         content=get_metrics(),
         media_type=get_metrics_content_type()
@@ -500,11 +645,10 @@ async def metrics():
 
 if __name__ == "__main__":
     import uvicorn
-    backend_port = int(os.getenv("BACKEND_PORT", "8080"))
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=backend_port,
-        reload=False,  # ❗ Выключено для production (Render)
+        reload=True,
         log_level="info"
     )
