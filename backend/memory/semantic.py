@@ -17,7 +17,7 @@ import os
 import sqlite3
 import logging
 
-logger = logging.getLogger("PAD+.semantic")
+logger = logging.getLogger("neuromind.semantic")
 
 
 class KnowledgeType(Enum):

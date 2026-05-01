@@ -1,158 +1,296 @@
-# 🖥️ Frontend — PAD+ AI v4.0
+# Frontend Компоненты
+
+Этот документ описывает frontend компоненты PAD+ AI.
 
 ## Обзор
 
-Frontend реализован на **React + Vite** (JavaScript, без TypeScript). Использует Tailwind CSS для стилизации.
+Frontend реализован на React с использованием TypeScript и Vite. Интерфейс включает:
 
-**Порт:** `http://localhost:5174`
+- Чат с эмоциональной аналитикой
+- Аналитику использования
+- Управление провайдерами LLM
+- WebSocket соединение для реального времени
+- Модальное окно настроек
 
 ## Структура проекта
 
 ```
 frontend/
 ├── src/
-│   ├── App.jsx                    # Главный компонент (роутинг, auth, модель)
-│   ├── main.jsx                   # Entry point
-│   ├── index.css                  # Глобальные стили + Tailwind
-│   │
-│   ├── components/                # UI компоненты
-│   │   ├── Auth.jsx               # Регистрация / Вход (Supabase Auth)
-│   │   ├── ChatInterface.jsx      # Чат с SSE streaming
-│   │   ├── Dashboard.jsx          # Главная страница с виджетами
-│   │   ├── ModelSelector.jsx      # Выбор модели (dropdown)
-│   │   ├── ApiKeyForm.jsx         # Форма добавления API ключа
-│   │   ├── ProviderManagement.jsx # Управление провайдерами
-│   │   ├── ProviderSelector.jsx   # Выбор провайдера
-│   │   ├── ProviderTester.jsx     # Тест подключения провайдера
-│   │   ├── LeftSidebar.jsx        # Левая боковая панель (навигация)
-│   │   ├── RightSidebar.jsx       # Правая панель (метрики, PAD, виджеты)
-│   │   ├── KpiCard.jsx            # KPI карточка
-│   │   │
-│   │   ├── ui/                    # Базовые UI компоненты
-│   │   │   ├── Button.jsx
-│   │   │   ├── Card.jsx
-│   │   │   └── index.js
-│   │   │
-│   │   └── widgets/               # Виджеты дашборда
-│   │       ├── FlowWidget.jsx         # Pipeline визуализация
-│   │       ├── PadWidget.jsx          # Эмоции PAD+
-│   │       ├── HealthWidget.jsx       # Здоровье системы
-│   │       ├── MemoryWidget.jsx       # Память
-│   │       ├── KnowledgeWidget.jsx    # Граф знаний
-│   │       ├── MetricsWidget.jsx      # Метрики
-│   │       ├── LogsWidget.jsx         # Логи
-│   │       └── SystemResourcesWidget.jsx # Ресурсы системы
-│   │
-│   ├── pages/                     # Страницы
-│   │   ├── ProvidersPage.jsx          # Каталог провайдеров (20+)
-│   │   ├── ConnectedProvidersPage.jsx # Подключенные провайдеры
-│   │   └── InstructionsPage.jsx       # Инструкции
-│   │
-│   ├── hooks/
-│   │   └── useWebSocket.js        # WebSocket хук
-│   │
-│   └── services/
-│       └── modelCache.js          # Кэширование моделей
-│
-├── package.json
-├── vite.config.js
-├── tailwind.config.js
-└── postcss.config.js
+│   ├── App.jsx              # Главный компонент приложения
+│   ├── App.css              # Стили приложения
+│   ├── Settings.jsx         # Компонент настроек провайдеров
+│   ├── Settings.css         # Стили настроек
+│   └── components/          # Дополнительные компоненты
+├── public/                  # Статические файлы
+└── package.json            # Зависимости и скрипты
 ```
 
-## Архитектура
+## Главный компонент (App.jsx)
 
-### Аутентификация
+### Функции
 
-Используется **Supabase Auth** через backend эндпоинты:
+- Управление состоянием приложения
+- WebSocket соединение
+- API запросы к backend
+- Отображение различных вкладок
+- Обработка чата и RAG контекста
 
-```
-POST /api/v1/auth/register  → Регистрация
-POST /api/v1/auth/login     → Вход
-GET  /api/v1/auth/me        → Текущий пользователь
-```
+### Состояния
 
-Токен хранится в `localStorage` и передаётся в заголовке `Authorization: Bearer <token>`.
-
-### Управление моделями
-
-1. **App.jsx** хранит `selectedModel` в state + `localStorage`
-2. При загрузке автоматически выбирается модель с `is_default=true`
-3. Модель передаётся в `ChatInterface` как prop
-4. При смене модели отправляется событие `model-changed`
-
-### Чат
-
-**Компонент:** `ChatInterface.jsx`
-
-**Поток:**
-```
-User вводит сообщение
-    ↓
-POST /api/v1/chat/stream (SSE)
-    ↓
-Чтение потока через ReadableStream
-    ↓
-Отображение в реальном времени
+```javascript
+const [activeTab, setActiveTab] = useState('chat')
+const [prompt, setPrompt] = useState('')
+const [messages, setMessages] = useState([])
+const [emotion, setEmotion] = useState(null)
+const [knowledgeGraph, setKnowledgeGraph] = useState(null)
+const [autonomy, setAutonomy] = useState(null)
+const [wsConnected, setWsConnected] = useState(false)
+const [showSettings, setShowSettings] = useState(false)
 ```
 
-**Запрос:**
-```json
-{
-  "message": "Привет!",
-  "key_id": "uuid-ключа",
-  "model": "gigachat/GigaChat",
-  "provider": "gigachat",
-  "stream": true
+### WebSocket соединение
+
+```javascript
+const connectWebSocket = useCallback(() => {
+  const ws = new WebSocket(WS_URL)
+  
+  ws.onopen = () => {
+    setWsConnected(true)
+    ws.send(JSON.stringify({
+      type: 'subscribe',
+      channels: ['emotion', 'memory', 'autonomy', 'all']
+    }))
+  }
+  
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data)
+    handleWsMessage(data)
+  }
+  
+  // ... обработка закрытия и ошибок
+}, [])
+```
+
+### API запросы
+
+```javascript
+const sendChat = async () => {
+  const response = await fetch(`${API_URL}/api/v1/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt })
+  })
+  
+  const data = await response.json()
+  // Обработка ответа
 }
 ```
 
-### Управление провайдерами
+## Компонент настроек (Settings.jsx)
 
-**Страницы:**
-- **ProvidersPage** — каталог всех 20+ провайдеров, подключение новых
-- **ConnectedProvidersPage** — список подключенных, смена модели, удаление
+### Функции
 
-**Поток подключения:**
+- Отображение списка провайдеров
+- Проверка статуса конфигурации
+- Переключение активного провайдера
+- Визуальная индикация состояния
+
+### Состояния
+
+```javascript
+const [providers, setProviders] = useState([])
+const [activeProvider, setActiveProvider] = useState(null)
+const [loading, setLoading] = useState(false)
+const [error, setError] = useState(null)
 ```
-Выбор провайдера → Ввод API ключа → POST /api/v1/keys → Сохранение в БД (зашифровано)
+
+### API методы
+
+```javascript
+const fetchProviders = async () => {
+  const response = await fetch(`${API_URL}/api/v1/providers`)
+  const data = await response.json()
+  setProviders(data.providers)
+}
+
+const switchProvider = async (providerName) => {
+  const response = await fetch(`${API_URL}/api/v1/providers/switch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider_name: providerName })
+  })
+  
+  const data = await response.json()
+  setActiveProvider(data.provider)
+}
 ```
 
-### WebSocket
+## Стили (App.css)
 
-**Хук:** `useWebSocket.js`
+### Цветовая схема
 
-Подключается к `ws://localhost:8080/ws` для получения событий в реальном времени.
+- **Основной фон**: Градиент от темно-синего к черному
+- **Акценты**: Голубой (#00d9ff) и зеленый (#00ff88)
+- **Текст**: Светлый (#e0e0e0) и серый (#888)
+- **Фон элементов**: Прозрачный с эффектом стекла
 
-## Стили
+### Компоненты стилей
 
-### Tailwind CSS
+```css
+/* Градиентный текст */
+.header h1 {
+  background: linear-gradient(90deg, #00d9ff, #00ff88);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
 
-Используется кастомная тема с тёмной цветовой схемой:
+/* Эффект стекла */
+.sidebar, .messages {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
 
-```js
-// tailwind.config.js
-colors: {
-  background: '#0B0F14',
-  card: '#111827',
-  border: '#1F2937',
-  primary: '#6366F1',
-  text: {
-    primary: '#FFFFFF',
-    secondary: '#9CA3AF',
-    muted: '#6B7280'
+/* Активные элементы */
+.tabs button.active {
+  background: linear-gradient(135deg, #00d9ff, #00ff88);
+  color: #1a1a2e;
+}
+```
+
+### Анимации
+
+```css
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message {
+  animation: fadeIn 0.3s ease;
+}
+```
+
+## WebSocket интеграция
+
+### Подписка на события
+
+```javascript
+useEffect(() => {
+  connectWebSocket()
+  
+  return () => {
+    if (wsRef.current) {
+      wsRef.current.close()
+    }
+  }
+}, [connectWebSocket])
+```
+
+### Обработка сообщений
+
+```javascript
+const handleWsMessage = (data) => {
+  switch (data.type) {
+    case 'emotion_update':
+      setEmotion(data.state)
+      break
+    case 'chat_response':
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        text: data.response,
+        provider: data.provider
+      }])
+      break
+    // ... другие события
   }
 }
 ```
 
-### Компоненты UI
+## RAG интеграция
 
-- **Button.jsx** — варианты: `default`, `outline`, размеры: `sm`, `default`
-- **Card.jsx** — `Card`, `CardHeader`, `CardTitle`, `CardContent`
+### Поиск контекста
 
-## Запуск
+```javascript
+const searchRag = async (query) => {
+  const response = await fetch(`${API_URL}/api/v1/rag/search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, n_results: 3 })
+  })
+  
+  const data = await response.json()
+  return data.results
+}
+```
 
-### Development
+### Отображение контекста
+
+```jsx
+{ragContext && ragContext.length > 0 && (
+  <div className="rag-context">
+    <div className="rag-header">
+      <span>📚 Найдено в памяти</span>
+      <button onClick={() => setRagContext(null)}>×</button>
+    </div>
+    <div className="rag-items">
+      {ragContext.map((item, i) => (
+        <div key={i} className="rag-item">
+          <span className="rag-similarity">
+            {(item.similarity * 100).toFixed(0)}% схожесть
+          </span>
+          <div className="rag-text">
+            <strong>Вопрос:</strong> {item.metadata?.user_message}
+          </div>
+          <div className="rag-text">
+            <strong>Ответ:</strong> {item.metadata?.ai_response}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+```
+
+## Безопасность
+
+### CORS
+
+```javascript
+// Backend CORS настройки
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "https://your-domain.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+### Защита API ключей
+
+- API ключи хранятся только на сервере
+- Клиент получает только статус конфигурации
+- WebSocket соединение защищено CORS
+
+## Производительность
+
+### Оптимизации
+
+- Использование `useCallback` для функций
+- Memoization для тяжелых вычислений
+- Пагинация и лимитирование запросов
+- Кэширование статистики
+
+### WebSocket оптимизации
+
+- Подписка только на необходимые каналы
+- Ограничение частоты обновлений
+- Автоматическое переподключение
+
+## Развертывание
+
+### Локальная разработка
 
 ```bash
 cd frontend
@@ -160,33 +298,34 @@ npm install
 npm run dev
 ```
 
-Откройте http://localhost:5174
-
 ### Production сборка
 
 ```bash
 npm run build
-# Результат в frontend/dist/
+npm run preview
 ```
 
-## Переменные окружения
+### Environment переменные
 
-Vite проксирует API запросы на backend автоматически. Настройка в `vite.config.js`:
-
-```js
-server: {
-  proxy: {
-    '/api': 'http://127.0.0.1:8080',
-    '/ws': { target: 'ws://127.0.0.1:8080', ws: true }
-  }
-}
+```env
+VITE_API_URL=http://localhost:8000
+VITE_WS_URL=ws://localhost:8000/ws
 ```
 
-## Зависимости
+## Тестирование
 
-| Пакет | Версия | Назначение |
-|-------|--------|------------|
-| react | 18.x | UI фреймворк |
-| vite | 5.4.x | Сборщик |
-| tailwindcss | 3.x | Стили |
-| postcss | 8.x | Обработка CSS |
+### Рекомендации
+
+- Тестирование WebSocket соединения
+- Проверка API интеграции
+- Тестирование RAG функциональности
+- Проверка производительности
+
+## Future улучшения
+
+- TypeScript типизация
+- Unit тесты с Jest
+- E2E тесты с Cypress
+- PWA поддержка
+- Темная/светлая тема
+- Адаптивный дизайн для мобильных

@@ -19,7 +19,7 @@ import os
 import sqlite3
 import logging
 
-logger = logging.getLogger("PAD+.episodic")
+logger = logging.getLogger("neuromind.episodic")
 
 
 @dataclass
@@ -34,9 +34,6 @@ class Episode:
     id: str
     timestamp: datetime
     
-    # === ФАЗА 3: Персонализация ===
-    user_id: Optional[str] = None    # ID владельца эпизода (None для общих)
-
     # Контекст ситуации
     situation: str = ""              # Описание ситуации
     participants: List[str] = field(default_factory=list)  # Участники
@@ -78,7 +75,6 @@ class Episode:
         return {
             "id": self.id,
             "timestamp": self.timestamp.isoformat(),
-            "user_id": self.user_id,  # === ФАЗА 3: Персонализация ===
             "situation": self.situation,
             "participants": self.participants,
             "location": self.location,
@@ -102,14 +98,13 @@ class Episode:
             "success": self.success,
             "feedback": self.feedback
         }
-
+    
     @classmethod
     def from_dict(cls, data: dict) -> 'Episode':
         """Создаёт эпизод из словаря"""
         return cls(
             id=data["id"],
             timestamp=datetime.fromisoformat(data["timestamp"]),
-            user_id=data.get("user_id"),  # === ФАЗА 3: Персонализация ===
             situation=data.get("situation", ""),
             participants=data.get("participants", []),
             location=data.get("location", ""),
@@ -163,13 +158,12 @@ class EpisodicMemory:
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-
+        
         # Основная таблица эпизодов
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS episodes (
                 id TEXT PRIMARY KEY,
                 timestamp TEXT NOT NULL,
-                user_id TEXT,
                 situation TEXT DEFAULT '',
                 participants TEXT DEFAULT '[]',
                 location TEXT DEFAULT '',
@@ -195,33 +189,20 @@ class EpisodicMemory:
             )
         """)
         
-        # === ФАЗА 3: Добавляем user_id если нет ===
-        cursor.execute("PRAGMA table_info(episodes)")
-        columns = [row[1] for row in cursor.fetchall()]
-        if "user_id" not in columns:
-            print(f"🔄 Добавление колонки user_id в episodes...")
-            cursor.execute("ALTER TABLE episodes ADD COLUMN user_id TEXT")
-
         # Индексы для поиска
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_episodes_timestamp
+            CREATE INDEX IF NOT EXISTS idx_episodes_timestamp 
             ON episodes(timestamp DESC)
         """)
-
+        
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_episodes_topic
+            CREATE INDEX IF NOT EXISTS idx_episodes_topic 
             ON episodes(topic)
         """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_episodes_significance
-            ON episodes(significance DESC)
-        """)
         
-        # === ФАЗА 3: Индекс для user_id ===
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_episodes_user_id
-            ON episodes(user_id)
+            CREATE INDEX IF NOT EXISTS idx_episodes_significance 
+            ON episodes(significance DESC)
         """)
         
         # Таблица связей между эпизодами
@@ -257,20 +238,16 @@ class EpisodicMemory:
         situation: str = "",
         participants: List[str] = None,
         location: str = "",
-        continuation_of: str = None,
-        user_id: Optional[str] = None  # === ФАЗА 3: Персонализация ===
+        continuation_of: str = None
     ) -> Episode:
         """
         Добавляет новый эпизод в память
-        
-        Args:
-            user_id: ID владельца эпизода (None для общих записей)
         """
         import uuid
-
+        
         episode_id = str(uuid.uuid4())[:12]
         now = datetime.now()
-
+        
         # Вычисляем эмоциональный импакт
         emotion_impact = 0.0
         if emotion_before and emotion_after:
@@ -279,13 +256,12 @@ class EpisodicMemory:
             after_conf = emotion_after.get("уверенность", 0.5)
             before_pleasure = emotion_before.get("удовольствие", 0.0)
             after_pleasure = emotion_after.get("удовольствие", 0.0)
-
+            
             emotion_impact = ((after_conf - before_conf) + (after_pleasure - before_pleasure)) / 2
-
+        
         episode = Episode(
             id=episode_id,
             timestamp=now,
-            user_id=user_id,  # === ФАЗА 3: Персонализация ===
             situation=situation,
             participants=participants or [],
             location=location,
@@ -320,21 +296,20 @@ class EpisodicMemory:
         """Сохраняет эпизод в БД"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-
+        
         cursor.execute("""
             INSERT OR REPLACE INTO episodes (
-                id, timestamp, user_id, situation, participants, location,
+                id, timestamp, situation, participants, location,
                 user_message, ai_response, intent, topic,
                 emotion_before, emotion_after, emotion_impact,
                 entities, concepts, keywords,
                 related_episodes, parent_episode, continuation_of,
                 significance, access_count, last_accessed,
                 duration_seconds, success, feedback
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             episode.id,
             episode.timestamp.isoformat(),
-            episode.user_id,  # === ФАЗА 3: Персонализация ===
             episode.situation,
             json.dumps(episode.participants),
             episode.location,
@@ -358,7 +333,7 @@ class EpisodicMemory:
             1 if episode.success else 0,
             episode.feedback
         ))
-
+        
         conn.commit()
         conn.close()
     
@@ -383,33 +358,23 @@ class EpisodicMemory:
     
     def _row_to_episode(self, row: sqlite3.Row) -> Episode:
         """Преобразует строку БД в Episode"""
-        # Безопасная загрузка JSON с fallback на пустые значения
-        def safe_json_loads(value, default=None):
-            if value is None:
-                return default if default is not None else {}
-            try:
-                result = json.loads(value)
-                return result if result is not None else default if default is not None else {}
-            except (json.JSONDecodeError, TypeError):
-                return default if default is not None else {}
-        
         return Episode(
             id=row["id"],
             timestamp=datetime.fromisoformat(row["timestamp"]),
             situation=row["situation"],
-            participants=safe_json_loads(row["participants"], []),
+            participants=json.loads(row["participants"]),
             location=row["location"],
             user_message=row["user_message"],
             ai_response=row["ai_response"],
             intent=row["intent"],
             topic=row["topic"],
-            emotion_before=safe_json_loads(row["emotion_before"]),
-            emotion_after=safe_json_loads(row["emotion_after"]),
+            emotion_before=json.loads(row["emotion_before"]),
+            emotion_after=json.loads(row["emotion_after"]),
             emotion_impact=row["emotion_impact"],
-            entities=safe_json_loads(row["entities"], []),
-            concepts=safe_json_loads(row["concepts"], []),
-            keywords=safe_json_loads(row["keywords"], []),
-            related_episodes=safe_json_loads(row["related_episodes"], []),
+            entities=json.loads(row["entities"]),
+            concepts=json.loads(row["concepts"]),
+            keywords=json.loads(row["keywords"]),
+            related_episodes=json.loads(row["related_episodes"]),
             parent_episode=row["parent_episode"],
             continuation_of=row["continuation_of"],
             significance=row["significance"],
@@ -426,66 +391,56 @@ class EpisodicMemory:
         topic: str = None,
         intent: str = None,
         min_significance: float = 0.0,
-        limit: int = 10,
-        user_id: Optional[str] = None  # === ФАЗА 3: Персонализация ===
+        limit: int = 10
     ) -> List[Episode]:
         """
         Поиск эпизодов по различным критериям
-        
-        Args:
-            user_id: ID владельца (None для поиска по всем + общим записям)
         """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-
+        
         conditions = []
         params = []
-
+        
         if query:
             conditions.append("(user_message LIKE ? OR ai_response LIKE ?)")
             params.extend([f"%{query}%", f"%{query}%"])
-
+        
         if topic:
             conditions.append("topic = ?")
             params.append(topic)
-
+        
         if intent:
             conditions.append("intent = ?")
             params.append(intent)
-
+        
         if min_significance > 0:
             conditions.append("significance >= ?")
             params.append(min_significance)
-
-        # === ФАЗА 3: Фильтр по user_id ===
-        if user_id:
-            # Ищем записи пользователя ИЛИ общие (user_id IS NULL)
-            conditions.append("(user_id = ? OR user_id IS NULL)")
-            params.append(user_id)
-
+        
         where_clause = " AND ".join(conditions) if conditions else "1=1"
-
+        
         sql = f"""
-            SELECT * FROM episodes
+            SELECT * FROM episodes 
             WHERE {where_clause}
             ORDER BY timestamp DESC
             LIMIT ?
         """
         params.append(limit)
-
+        
         cursor.execute(sql, params)
         rows = cursor.fetchall()
         conn.close()
-
+        
         episodes = [self._row_to_episode(row) for row in rows]
-
+        
         # Обновляем access_count
         for ep in episodes:
             ep.access_count += 1
             ep.last_accessed = datetime.now()
             self._save_episode(ep)
-
+        
         return episodes
     
     def get_timeline(

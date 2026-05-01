@@ -15,7 +15,7 @@ import asyncio
 import json
 import logging
 
-logger = logging.getLogger("PAD+.websocket")
+logger = logging.getLogger("neuromind.websocket")
 
 
 class EventType(Enum):
@@ -58,28 +58,18 @@ class WSMessage:
 class WebSocketManager:
     """
     🔌 Менеджер WebSocket соединений
-
+    
     Features:
     - Управление множественными соединениями
     - Broadcast сообщения
     - Room-based подписки
-    - Heartbeat для проверки связи (Вторая очередь улучшений)
+    - Heartbeat для проверки связи
     """
-
-    # === HEARTBEAT НАСТРОЙКИ ===
-    HEARTBEAT_INTERVAL = 30  # Секунды между ping
-    HEARTBEAT_TIMEOUT = 300  # 5 минут таймаут при бездействии
-
+    
     def __init__(self):
         # Активные соединения: client_id -> websocket
         self._connections: Dict[str, Any] = {}
-
-        # Heartbeat задачи: client_id -> asyncio.Task
-        self._heartbeat_tasks: Dict[str, asyncio.Task] = {}
-
-        # Last activity time: client_id -> datetime
-        self._last_activity: Dict[str, datetime] = {}
-
+        
         # Rooms: room_name -> set of client_ids
         self._rooms: Dict[str, Set[str]] = {
             "general": set(),      # Общие обновления
@@ -87,132 +77,48 @@ class WebSocketManager:
             "system": set(),       # Системные события
             "dialogue": set()      # Диалоги
         }
-
+        
         # Подписки на события
         self._event_subscriptions: Dict[str, Set[str]] = {}
-
+        
         # Статистика
         self._stats = {
             "total_connections": 0,
             "total_messages_sent": 0,
             "total_broadcasts": 0,
-            "errors": 0,
-            "heartbeat_pings": 0,
-            "heartbeat_timeouts": 0
+            "errors": 0
         }
     
     async def connect(self, client_id: str, websocket: Any):
         """Регистрирует новое соединение"""
         self._connections[client_id] = websocket
-        self._last_activity[client_id] = datetime.now()
-
+        
         # Автоматически подписываем на general
         self._rooms["general"].add(client_id)
-
+        
         self._stats["total_connections"] += 1
-
+        
         logger.info(f"🔌 Client connected: {client_id}")
-
-        # Запускаем heartbeat для клиента
-        self._start_heartbeat(client_id)
-
+        
         # Отправляем приветствие
         await self.send_to(client_id, EventType.SYSTEM_ALERT.value, {
-            "message": "Connected to PAD+ AI",
-            "client_id": client_id,
-            "heartbeat_interval": self.HEARTBEAT_INTERVAL
+            "message": "Connected to NeuroMind AI",
+            "client_id": client_id
         })
-
-    def _start_heartbeat(self, client_id: str):
-        """Запускает heartbeat задачу для клиента"""
-        if client_id in self._heartbeat_tasks:
-            self._stop_heartbeat(client_id)
-        
-        self._heartbeat_tasks[client_id] = asyncio.create_task(
-            self._heartbeat_loop(client_id)
-        )
-        logger.debug(f"💓 Heartbeat started for {client_id}")
-
-    async def _heartbeat_loop(self, client_id: str):
-        """Heartbeat loop — отправляет ping каждые HEARTBEAT_INTERVAL секунд"""
-        try:
-            while client_id in self._connections:
-                await asyncio.sleep(self.HEARTBEAT_INTERVAL)
-                
-                # Проверяем timeout
-                last_activity = self._last_activity.get(client_id)
-                if last_activity:
-                    inactive_time = (datetime.now() - last_activity).total_seconds()
-                    if inactive_time > self.HEARTBEAT_TIMEOUT:
-                        logger.warning(f"⏰ Heartbeat timeout for {client_id} ({inactive_time:.0f}s)")
-                        self._stats["heartbeat_timeouts"] += 1
-                        await self.disconnect_async(client_id)
-                        break
-                
-                # Отправляем ping
-                await self._send_ping(client_id)
-                
-        except asyncio.CancelledError:
-            pass  # Нормальное завершение
-        except Exception as e:
-            logger.error(f"❌ Heartbeat error for {client_id}: {e}")
-            self._stats["errors"] += 1
-
-    async def _send_ping(self, client_id: str):
-        """Отправляет ping клиенту"""
-        if client_id not in self._connections:
-            return
-        
-        try:
-            await self.send_to(client_id, "ping", {
-                "timestamp": datetime.now().isoformat()
-            })
-            self._stats["heartbeat_pings"] += 1
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to send ping to {client_id}: {e}")
-
-    async def handle_pong(self, client_id: str):
-        """Обрабатывает pong от клиента — обновляет last_activity"""
-        if client_id in self._last_activity:
-            self._last_activity[client_id] = datetime.now()
-
-    def _stop_heartbeat(self, client_id: str):
-        """Останавливает heartbeat задачу"""
-        if client_id in self._heartbeat_tasks:
-            task = self._heartbeat_tasks[client_id]
-            task.cancel()
-            del self._heartbeat_tasks[client_id]
-            logger.debug(f"💓 Heartbeat stopped for {client_id}")
-
-    async def disconnect_async(self, client_id: str):
-        """Асинхронно отключает клиента (для heartbeat timeout)"""
-        if client_id in self._connections:
-            try:
-                await self._connections[client_id].close(code=1000, reason="Heartbeat timeout")
-            except Exception:
-                pass
-        self.disconnect(client_id)
-
+    
     def disconnect(self, client_id: str):
         """Удаляет соединение"""
-        # Останавливаем heartbeat
-        self._stop_heartbeat(client_id)
-        
-        # Удаляем last activity
-        if client_id in self._last_activity:
-            del self._last_activity[client_id]
-        
         if client_id in self._connections:
             del self._connections[client_id]
-
+        
         # Удаляем из всех rooms
         for room in self._rooms.values():
             room.discard(client_id)
-
+        
         # Удаляем из подписок
         for subscribers in self._event_subscriptions.values():
             subscribers.discard(client_id)
-
+        
         logger.info(f"🔌 Client disconnected: {client_id}")
     
     async def send_to(

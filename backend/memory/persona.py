@@ -1,5 +1,5 @@
 """
-🎭 PersonaMemory — Ядро личности PAD+ AI
+🎭 PersonaMemory — Ядро личности NeuroMind AI
 
 Хранит "Я" системы — отдельно от знаний о мире.
 НЕ смешивается с фактами, RAG, графом знаний.
@@ -14,7 +14,7 @@ from pathlib import Path
 import json
 import logging
 
-logger = logging.getLogger("PAD+.persona")
+logger = logging.getLogger("neuromind.persona")
 
 
 @dataclass
@@ -83,7 +83,7 @@ class PersonaMemory:
     - Ценности и принципы
     """
     
-    # Базовые черты личности PAD+
+    # Базовые черты личности NeuroMind
     DEFAULT_TRAITS = {
         "curiosity": ("Любопытство", "Стремление исследовать неизвестное"),
         "skepticism": ("Скептицизм", "Критическое отношение к утверждениям"),

@@ -16,24 +16,11 @@ from datetime import datetime, timedelta
 import logging
 import math
 
-# ChromaDB для векторного поиска (опционально)
-chromadb = None
-Settings = None
-chromadb_available = False
-try:
-    import chromadb as _chromadb
-    from chromadb.config import Settings as _Settings
-    chromadb = _chromadb
-    Settings = _Settings
-    chromadb_available = True
-except Exception as e:
-    import logging
-    logging.getLogger("PAD+.rag").warning(f"⚠️ ChromaDB недоступен ({e}), используем SQLite")
-    chromadb = None
-    Settings = None
-    chromadb_available = False
+# ChromaDB для векторного поиска
+import chromadb
+from chromadb.config import Settings
 
-logger = logging.getLogger("PAD+.rag")
+logger = logging.getLogger("neuromind.rag")
 
 # Константы
 CONTEXT_WINDOW = 5
@@ -340,7 +327,7 @@ def summarize_text_simple(text: str, max_length: int = 200) -> str:
 
 async def summarize_text_llm(text: str, max_length: int = 200) -> str:
     """
-    LLM-суммаризация текста через LiteLLM
+    LLM-суммаризация текста через GigaChat
     
     Использует модель для создания краткого содержания
     """
@@ -413,81 +400,61 @@ class RAGMemory:
         
         self.persist_dir = persist_dir
         self.use_llm_summarization = use_llm_summarization
-        self.chroma_available = False
-
-        # Инициализируем ChromaDB с graceful degradation
-        if chromadb_available and chromadb is not None and Settings is not None:
-            try:
-                self.client = chromadb.PersistentClient(
-                    path=persist_dir,
-                    settings=Settings(anonymized_telemetry=False)
-                )
-                logger.info("✅ ChromaDB клиент инициализирован")
-
-                self.collection = self.client.get_or_create_collection(
-                    name="padplus_dialogs_v3",
-                    metadata={"description": "История диалогов PAD+ v3"}
-                )
-                logger.info(f"✅ Коллекция создана: {self.collection.count()} записей")
-                self.chroma_available = True
-            except Exception as e:
-                logger.warning(f"⚠️ ChromaDB недоступен ({e}), используем SQLite fallback")
-                self.chroma_available = False
-        else:
-            self.chroma_available = False
-
-        if not self.chroma_available:
-            self.client = None
-            self.collection = None
-            # SQLite fallback
-            import sqlite3
-            self.sqlite_path = os.path.join(persist_dir, "rag_fallback.db")
-            os.makedirs(persist_dir, exist_ok=True)
-            self.sqlite_conn = sqlite3.connect(self.sqlite_path)
-            self.sqlite_conn.execute("""
-                CREATE TABLE IF NOT EXISTS dialogs (
-                    id TEXT PRIMARY KEY,
-                    user_message TEXT,
-                    ai_response TEXT,
-                    metadata TEXT,
-                    timestamp REAL
-                )
-            """)
-            self.sqlite_conn.commit()
-            logger.info("✅ SQLite fallback инициализирован")
-
+        
+        # Инициализируем ChromaDB с обработкой ошибок
+        try:
+            self.client = chromadb.PersistentClient(
+                path=persist_dir,
+                settings=Settings(anonymized_telemetry=False)
+            )
+            logger.info("✅ ChromaDB клиент инициализирован")
+        except Exception as e:
+            logger.error(f"❌ Ошибка инициализации ChromaDB: {e}")
+            raise
+        
+        try:
+            # Коллекция для диалогов
+            self.collection = self.client.get_or_create_collection(
+                name="neuromind_dialogs_v3",
+                metadata={"description": "История диалогов NeuroMind v3"}
+            )
+            logger.info(f"✅ Коллекция создана: {self.collection.count()} записей")
+        except Exception as e:
+            logger.error(f"❌ Ошибка создания коллекции: {e}")
+            raise
+        
         self._keywords_cache: Dict[str, List[str]] = {}
-        logger.info(f"🧠 RAG Memory v3.0 инициализирована (ChromaDB: {self.chroma_available})")
+        
+        logger.info(f"🧠 RAG Memory v3.0 полностью инициализирована")
     
     def add_dialog(
-        self,
-        user_message: str,
+        self, 
+        user_message: str, 
         ai_response: str,
-        metadata: Dict[str, Any] = None,
-        user_id: Optional[str] = None  # === ФАЗА 2: Персонализация ===
+        metadata: Dict[str, Any] = None
     ) -> str:
         """Добавляет диалог в память с анализом"""
         import uuid
         doc_id = str(uuid.uuid4())
-
+        
         # Суммаризируем (простая версия, без async)
         user_summary = summarize_text_sync(user_message, MAX_DIALOG_LENGTH)
         ai_summary = summarize_text_sync(ai_response, MAX_DIALOG_LENGTH)
-
+        
         # Извлекаем ключевые слова
         combined_text = f"{user_message} {ai_response}"
         keywords = extract_keywords(combined_text)
-
+        
         # Классифицируем тему
         topic_info = classify_dialog(user_message, ai_response)
-
+        
         # Извлекаем сущности и связи
         entities = extract_entities(combined_text)
         relations = extract_relations(user_message, ai_response)
-
+        
         # Полный текст для поиска
         doc_text = f"Вопрос: {user_summary}\nОтвет: {ai_summary}"
-
+        
         # Метаданные
         meta = metadata or {}
         meta.update({
@@ -498,44 +465,30 @@ class RAGMemory:
             "timestamp": datetime.now().isoformat(),
             "type": "dialog",
             "keywords": ",".join(keywords),
-            "is_summarized": len(user_message) > MAX_DIALOG_LENGTH or
+            "is_summarized": len(user_message) > MAX_DIALOG_LENGTH or 
                             len(ai_response) > MAX_DIALOG_LENGTH,
             # Новые поля
             "topic": topic_info["primary_topic"],
             "topic_confidence": topic_info["confidence"],
             "sentiment": topic_info["sentiment"],
             "entities": json.dumps(entities, ensure_ascii=False),
-            "relations": json.dumps(relations, ensure_ascii=False),
-            # === ФАЗА 2: Персонализация ===
-            "user_id": user_id  # None для общих записей
+            "relations": json.dumps(relations, ensure_ascii=False)
         })
-
-        # Добавляем в ChromaDB или SQLite fallback
-        if self.chroma_available:
-            self.collection.add(
-                ids=[doc_id],
-                documents=[doc_text],
-                metadatas=[meta]
-            )
-        else:
-            # SQLite fallback
-            import sqlite3
-            conn = sqlite3.connect(self.sqlite_path)
-            conn.execute(
-                "INSERT INTO dialogs (id, user_message, ai_response, metadata, timestamp) VALUES (?, ?, ?, ?, ?)",
-                (doc_id, user_summary, ai_summary, json.dumps(meta, ensure_ascii=False), time.time())
-            )
-            conn.commit()
-            conn.close()
-
+        
+        # Добавляем в ChromaDB
+        self.collection.add(
+            ids=[doc_id],
+            documents=[doc_text],
+            metadatas=[meta]
+        )
+        
         self._keywords_cache[doc_id] = keywords
-
+        
         logger.info(
             f"📝 Диалог добавлен: {doc_id[:8]}... "
             f"(тема: {topic_info['primary_topic']}, "
             f"сущностей: {len(entities)}, "
-            f"связей: {len(relations)}, "
-            f"user_id: {user_id})"
+            f"связей: {len(relations)})"
         )
         return doc_id
     
@@ -595,36 +548,34 @@ class RAGMemory:
         return doc_id
     
     def hybrid_search(
-        self,
-        query: str,
+        self, 
+        query: str, 
         n_results: int = CONTEXT_WINDOW,
         use_keywords: bool = True,
         use_recency: bool = True,
-        topic_filter: str = None,
-        user_id: Optional[str] = None  # === ФАЗА 2: Персонализация ===
+        topic_filter: str = None
     ) -> List[Dict[str, Any]]:
         """
-        Гибридный поиск с фильтрацией по темам и user_id
-
+        Гибридный поиск с фильтрацией по темам
+        
         Args:
             query: Поисковый запрос
             n_results: Количество результатов
             use_keywords: Использовать ключевые слова
             use_recency: Использовать давность
             topic_filter: Фильтр по теме (опционально)
-            user_id: ID пользователя для персонализации (None для общего поиска)
-
+            
         Returns:
             Отранжированный список диалогов
         """
         if self.collection.count() == 0:
             return []
-
-        # === ФАЗА 2: Фильтр по user_id и теме ===
+        
+        # Фильтр по теме
         where_filter = None
         if topic_filter:
             where_filter = {"topic": topic_filter}
-
+        
         # Семантический поиск
         semantic_results = self.collection.query(
             query_texts=[query],
@@ -632,34 +583,6 @@ class RAGMemory:
             where=where_filter,
             include=["documents", "metadatas", "distances"]
         )
-
-        if not semantic_results or not semantic_results['ids']:
-            return []
-
-        # === ФАЗА 2: Фильтрация по user_id после поиска ===
-        if user_id:
-            # Фильтруем результаты: оставляем записи пользователя ИЛИ без user_id
-            filtered_ids = []
-            filtered_docs = []
-            filtered_metas = []
-            filtered_distances = []
-            
-            for i, doc_id in enumerate(semantic_results['ids'][0]):
-                meta = semantic_results['metadatas'][0][i] if semantic_results['metadatas'] else {}
-                record_user_id = meta.get('user_id')
-                
-                # Оставляем если user_id совпадает ИЛИ user_id отсутствует
-                if record_user_id == user_id or record_user_id is None:
-                    filtered_ids.append(doc_id)
-                    filtered_docs.append(semantic_results['documents'][0][i])
-                    filtered_metas.append(meta)
-                    filtered_distances.append(semantic_results['distances'][0][i])
-            
-            # Обновляем результаты
-            semantic_results['ids'] = [filtered_ids[:n_results]]
-            semantic_results['documents'] = [filtered_docs[:n_results]]
-            semantic_results['metadatas'] = [filtered_metas[:n_results]]
-            semantic_results['distances'] = [filtered_distances[:n_results]]
         
         if not semantic_results or not semantic_results['ids']:
             return []
@@ -733,56 +656,34 @@ class RAGMemory:
         """Базовый поиск"""
         return self.hybrid_search(query, n_results)
     
-    def get_context(self, query: str, user_id: Optional[str] = None) -> str:
-        """
-        Формирует контекст для RAG
-        """
-        if self.chroma_available:
-            dialogs = self.hybrid_search(query, n_results=CONTEXT_WINDOW, user_id=user_id)
-        else:
-            # SQLite fallback — простой поиск по ключевым словам
-            import sqlite3
-            conn = sqlite3.connect(self.sqlite_path)
-            cursor = conn.execute(
-                "SELECT user_message, ai_response, metadata FROM dialogs WHERE user_message LIKE ? OR ai_response LIKE ? LIMIT 3",
-                (f'%{query}%', f'%{query}%')
-            )
-            dialogs = []
-            for row in cursor.fetchall():
-                dialogs.append({
-                    'metadata': json.loads(row[2]) if row[2] else {},
-                    'combined_score': 0.5,
-                    'topic': 'общее',
-                })
-            conn.close()
-
+    def get_context(self, query: str) -> str:
+        """Формирует контекст для RAG"""
+        dialogs = self.hybrid_search(query, n_results=CONTEXT_WINDOW)
+        
         if not dialogs:
             return ""
-
+        
         relevant = [d for d in dialogs if d['combined_score'] > 0.25]
-
+        
         if not relevant:
             return ""
-
+        
         context_parts = ["📚 Релевантный контекст из памяти:\n"]
-
+        
         for i, dialog in enumerate(relevant[:3], 1):
             meta = dialog['metadata']
             user_msg = meta.get('user_message', '')
             ai_resp = meta.get('ai_response', '')
             topic = dialog.get('topic', 'общее')
             
-            # Добавляем пометку о персонализации
-            owner = " (ваши данные)" if meta.get('user_id') == user_id else ""
-
             context_parts.append(
-                f"[{i}]{owner} (тема: {topic}, score: {dialog['combined_score']:.2f})\n"
+                f"[{i}] (тема: {topic}, score: {dialog['combined_score']:.2f})\n"
                 f"Вопрос: {user_msg}\n"
                 f"Ответ: {ai_resp}\n"
             )
-
+        
         context_parts.append("\nИспользуй этот контекст для ответа.\n")
-
+        
         return "\n".join(context_parts)
     
     def search_by_topic(self, topic: str, n_results: int = 5) -> List[Dict[str, Any]]:
@@ -877,25 +778,19 @@ class RAGMemory:
     
     def get_stats(self) -> Dict[str, Any]:
         """Расширенная статистика RAG"""
-        if self.chroma_available:
-            total = self.collection.count()
-            results = self.collection.get(include=["metadatas"])
-        else:
-            # SQLite fallback
-            import sqlite3
-            conn = sqlite3.connect(self.sqlite_path)
-            total = conn.execute("SELECT COUNT(*) FROM dialogs").fetchone()[0]
-            results = None
-            conn.close()
-
+        total = self.collection.count()
+        
+        results = self.collection.get(include=["metadatas"])
+        
         keyword_count = 0
         summarized_count = 0
         total_entities = 0
         total_relations = 0
+        
         topic_counts = {}
         sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
-
-        if self.chroma_available and results and results['metadatas']:
+        
+        if results and results['metadatas']:
             for meta in results['metadatas']:
                 if meta.get('keywords'):
                     keyword_count += 1
@@ -944,13 +839,13 @@ class RAGMemory:
     def clear(self):
         """Очищает память"""
         try:
-            self.client.delete_collection("padplus_dialogs_v3")
+            self.client.delete_collection("neuromind_dialogs_v3")
         except Exception:
             pass
         
         self.collection = self.client.get_or_create_collection(
-            name="padplus_dialogs_v3",
-            metadata={"description": "История диалогов PAD+ v3"}
+            name="neuromind_dialogs_v3",
+            metadata={"description": "История диалогов NeuroMind v3"}
         )
         self._keywords_cache.clear()
         logger.info("🗑️ RAG Memory v3.0 очищена")

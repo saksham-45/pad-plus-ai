@@ -1,5 +1,5 @@
 """
-🎯 IntentRouter — Главный оркестратор PAD+ AI
+🎯 IntentRouter — Главный оркестратор NeuroMind AI
 
 Определяет режим обработки запроса и собирает пайплайн.
 
@@ -21,7 +21,7 @@ from datetime import datetime
 import re
 import logging
 
-logger = logging.getLogger("PAD+.router")
+logger = logging.getLogger("neuromind.router")
 
 
 class IntentType(Enum):
@@ -235,7 +235,7 @@ class IntentRouter:
                 PipelineStep("check_cache", "memory.smartcache", "get"),
                 PipelineStep("get_emotion", "emotion.pad_model", "get_state"),
                 PipelineStep("compose_prompt", "core.dialogue", "format"),
-                PipelineStep("call_llm", "llm.litellm_service", "generate"),
+                PipelineStep("call_llm", "llm.gigachat", "generate"),
                 PipelineStep("update_emotion", "emotion.pad_model", "apply_event"),
                 PipelineStep("track_analytics", "analytics.metrics", "track"),
             ],
@@ -244,7 +244,7 @@ class IntentRouter:
                 PipelineStep("retrieve_rag", "memory.rag", "hybrid_search"),
                 PipelineStep("get_emotion", "emotion.pad_model", "get_state"),
                 PipelineStep("compose_prompt", "core.dialogue", "format_with_context"),
-                PipelineStep("call_llm", "llm.litellm_service", "generate"),
+                PipelineStep("call_llm", "llm.gigachat", "generate"),
                 PipelineStep("truth_verify", "core.truth_loop", "verify"),
                 PipelineStep("memory_update", "memory.rag", "add_dialog"),
                 PipelineStep("update_emotion", "emotion.pad_model", "apply_event"),
@@ -255,7 +255,7 @@ class IntentRouter:
                 PipelineStep("query_graph", "knowledge.graph", "query"),
                 PipelineStep("get_emotion", "emotion.pad_model", "get_state"),
                 PipelineStep("compose_prompt", "core.dialogue", "format_with_knowledge"),
-                PipelineStep("call_llm", "llm.litellm_service", "generate"),
+                PipelineStep("call_llm", "llm.gigachat", "generate"),
                 PipelineStep("truth_verify", "core.truth_loop", "verify"),
                 PipelineStep("knowledge_update", "knowledge.graph", "add_from_dialog"),
                 PipelineStep("memory_update", "memory.rag", "add_dialog"),
@@ -264,7 +264,7 @@ class IntentRouter:
                 PipelineStep("retrieve_rag", "memory.rag", "search"),
                 PipelineStep("get_emotion", "emotion.pad_model", "get_state"),
                 PipelineStep("compose_prompt", "core.dialogue", "format_clarify"),
-                PipelineStep("call_llm", "llm.litellm_service", "generate"),
+                PipelineStep("call_llm", "llm.gigachat", "generate"),
                 PipelineStep("memory_update", "memory.rag", "add_dialog"),
             ],
             IntentType.MEMORY_WRITE: [
@@ -272,20 +272,20 @@ class IntentRouter:
                 PipelineStep("write_fact", "memory.fact_memory", "add"),
                 PipelineStep("update_graph", "knowledge.graph", "add_concept"),
                 PipelineStep("confirm", "core.dialogue", "format_confirm"),
-                PipelineStep("call_llm", "llm.litellm_service", "generate"),
+                PipelineStep("call_llm", "llm.gigachat", "generate"),
             ],
             IntentType.TASK_CREATE: [
                 PipelineStep("parse_task", "autonomy.task_engine", "parse"),
                 PipelineStep("create_task", "autonomy.task_engine", "create"),
                 PipelineStep("get_emotion", "emotion.pad_model", "get_state"),
                 PipelineStep("compose_prompt", "core.dialogue", "format_task"),
-                PipelineStep("call_llm", "llm.litellm_service", "generate"),
+                PipelineStep("call_llm", "llm.gigachat", "generate"),
             ],
             IntentType.TASK_EXECUTE: [
                 PipelineStep("get_task", "autonomy.task_engine", "get_current"),
                 PipelineStep("execute_step", "autonomy.task_engine", "execute_step"),
                 PipelineStep("compose_prompt", "core.dialogue", "format_progress"),
-                PipelineStep("call_llm", "llm.litellm_service", "generate"),
+                PipelineStep("call_llm", "llm.gigachat", "generate"),
             ],
             IntentType.SYSTEM_ADMIN: [
                 PipelineStep("get_status", "core.system", "get_status"),
@@ -307,32 +307,32 @@ class IntentRouter:
         # Базовая стратегия
         strategies = {
             IntentType.CHAT_GENERAL: ProviderStrategy(
-                primary="litellm",
+                primary="gigachat",
                 fallback=["fallback"],
                 reason="Стандартный диалог"
             ),
             IntentType.CHAT_RAG: ProviderStrategy(
-                primary="litellm",
+                primary="gigachat",
                 fallback=["fallback"],
                 reason="RAG требует качественного ответа"
             ),
             IntentType.KNOWLEDGE_QUERY: ProviderStrategy(
-                primary="litellm",
+                primary="gigachat",
                 fallback=["fallback"],
                 reason="Сложный запрос к знаниям"
             ),
             IntentType.CLARIFY: ProviderStrategy(
-                primary="litellm",
+                primary="gigachat",
                 fallback=["fallback"],
                 reason="Уточнение требует понимания"
             ),
             IntentType.MEMORY_WRITE: ProviderStrategy(
-                primary="litellm",
+                primary="gigachat",
                 fallback=["fallback"],
                 reason="Запись в память важна"
             ),
             IntentType.TASK_CREATE: ProviderStrategy(
-                primary="litellm",
+                primary="gigachat",
                 fallback=["fallback"],
                 reason="Планирование требует качества"
             ),

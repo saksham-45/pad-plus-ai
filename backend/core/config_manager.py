@@ -22,7 +22,7 @@ except ImportError:
     PSYCOPG2_AVAILABLE = False
 import logging
 
-logger = logging.getLogger("PAD+.config")
+logger = logging.getLogger("neuromind.config")
 
 
 class ConfigSource(Enum):

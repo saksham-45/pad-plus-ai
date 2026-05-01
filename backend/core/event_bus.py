@@ -1,5 +1,5 @@
 """
-📡 EventBus — Шина событий PAD+ AI
+📡 EventBus — Шина событий NeuroMind AI
 
 Внутренняя коммуникация между модулями.
 
@@ -20,7 +20,7 @@ import asyncio
 import logging
 from collections import defaultdict
 
-logger = logging.getLogger("PAD+.events")
+logger = logging.getLogger("neuromind.events")
 
 
 class EventType(Enum):
@@ -29,10 +29,7 @@ class EventType(Enum):
     DIALOGUE_STARTED = "dialogue.started"
     DIALOGUE_FINISHED = "dialogue.finished"
     DIALOGUE_ERROR = "dialogue.error"
-
-    # Mind State
-    MIND_STATE_UPDATE = "mind_state.update"
-
+    
     # Память
     MEMORY_UPDATED = "memory.updated"
     MEMORY_CLEARED = "memory.cleared"

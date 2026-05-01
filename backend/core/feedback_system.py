@@ -15,7 +15,7 @@ import json
 import os
 import logging
 
-logger = logging.getLogger("PAD+.feedback")
+logger = logging.getLogger("neuromind.feedback")
 
 
 class FeedbackType(Enum):

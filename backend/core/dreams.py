@@ -17,7 +17,7 @@ import logging
 import asyncio
 import random
 
-logger = logging.getLogger("PAD+.dreams")
+logger = logging.getLogger("neuromind.dreams")
 
 
 @dataclass

@@ -15,7 +15,7 @@ import os
 import uuid
 import logging
 
-logger = logging.getLogger("PAD+.session")
+logger = logging.getLogger("neuromind.session")
 
 
 @dataclass

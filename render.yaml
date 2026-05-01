@@ -1,39 +1,90 @@
+# PAD+ AI - Render Blueprint
+# https://render.com/docs/blueprint-spec
+
 services:
+  # PostgreSQL Database
+  - type: postgres
+    name: padplus-ai-db
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: DATABASE_URL
+        fromDatabaseUrl: true
+
+  # Redis Cache
+  - type: redis
+    name: padplus-ai-redis
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: REDIS_URL
+        fromRedisUrl: true
+
+  # Backend - Web Service
   - type: web
-    name: pad-plus-ai
+    name: padplus-ai-backend
     runtime: python
-    plan: standard
+    region: frankfurt
+    plan: free
     buildCommand: |
+      python -m pip install --upgrade pip
       pip install -r requirements.txt
+    startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: OPENROUTER_ENABLED
+        value: "true"
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: "google/gemma-7b-it"
+      - key: GIGACHAT_ENABLED
+        value: "true"
+      - key: GIGACHAT_CLIENT_ID
+        sync: false
+      - key: GIGACHAT_AUTHORIZATION_KEY
+        sync: false
+      - key: GIGACHAT_SCOPE
+        value: "GIGACHAT_API_PERS"
+      - key: DEBUG
+        value: "false"
+      - key: RENDER
+        value: "true"
+      - key: LOG_LEVEL
+        value: "info"
+      - key: DATABASE_URL
+        fromDatabaseUrl: true
+      - key: REDIS_URL
+        fromRedisUrl: true
+      # Новые переменные для сессионной системы
+      - key: SESSION_TTL_HOURS
+        value: "24"
+      - key: ENABLE_SESSION_MANAGEMENT
+        value: "true"
+      - key: CACHE_TTL
+        value: "3600"
+      - key: RATE_LIMIT_REQUESTS
+        value: "100"
+      - key: RATE_LIMIT_WINDOW
+        value: "60"
+
+  # Frontend - Static Site
+  - type: web
+    name: padplus-ai-frontend
+    runtime: static
+    buildCommand: |
       cd frontend
       npm install
       npm run build
-      cd ..
-      python scripts/apply_migrations.py
-    startCommand: python backend/main.py
+    staticPublishPath: ./frontend/dist
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: NODE_VERSION
-        value: 20.10.0
-      - key: DATABASE_URL
-        fromDatabase:
-          name: pad-plus-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          name: pad-plus-redis
-          type: redis
-          property: connectionString
-
-  - type: redis
-    name: pad-plus-redis
-    ipAllowList: []
-    plan: starter
-
-databases:
-  - name: pad-plus-db
-    databaseName: padplus
-    user: padplus
-    plan: standard
-    ipAllowList: []
+      - key: VITE_API_URL
+        value: "https://padplus-ai-backend.onrender.com"
+      - key: VITE_APP_TITLE
+        value: "PAD+ AI v3.5"
+      - key: VITE_SESSION_ENABLED
+        value: "true"
+      - key: VITE_CDN_ENABLED
+        value: "true"

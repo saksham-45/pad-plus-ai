@@ -25,7 +25,7 @@ from .semantic import get_semantic_memory, SemanticMemory, KnowledgeType
 from .roots import get_roots_memory
 from .rag import get_rag as get_rag_memory
 
-logger = logging.getLogger("PAD+.consolidation")
+logger = logging.getLogger("neuromind.consolidation")
 
 
 @dataclass
@@ -81,45 +81,39 @@ class MemoryConsolidator:
         
         logger.info("✅ Консолидатор памяти инициализирован")
     
-    def consolidate_all(self, user_id: Optional[str] = None) -> Dict[str, ConsolidationResult]:
+    def consolidate_all(self) -> Dict[str, ConsolidationResult]:
         """
         Полная консолидация всех типов памяти
-        
-        Args:
-            user_id: ID пользователя для персональной консолидации (None для общей)
         """
         results = {}
-
+        
         # 1. Эпизодическая → Семантическая
-        results["episodic_to_semantic"] = self.consolidate_episodes_to_semantic(user_id=user_id)
-
+        results["episodic_to_semantic"] = self.consolidate_episodes_to_semantic()
+        
         # 2. RAG → Семантическая
-        results["rag_to_semantic"] = self.consolidate_rag_to_semantic(user_id=user_id)
-
+        results["rag_to_semantic"] = self.consolidate_rag_to_semantic()
+        
         # 3. Семантическая → Roots
-        results["semantic_to_roots"] = self.consolidate_semantic_to_roots(user_id=user_id)
-
+        results["semantic_to_roots"] = self.consolidate_semantic_to_roots()
+        
         # 4. Обновление связей
-        results["update_connections"] = self.update_knowledge_connections(user_id=user_id)
-
+        results["update_connections"] = self.update_knowledge_connections()
+        
         return results
     
-    def consolidate_episodes_to_semantic(self, user_id: Optional[str] = None) -> ConsolidationResult:
+    def consolidate_episodes_to_semantic(self) -> ConsolidationResult:
         """
         Консолидация эпизодов в семантическую память
         
         Извлекает общие знания из повторяющихся эпизодов
-        
-        Args:
-            user_id: ID пользователя для персональной консолидации
         """
         start_time = datetime.now()
         insights = []
         items_processed = 0
         items_consolidated = 0
-
+        
         # Получаем кандидатов для консолидации
-        candidates = self._get_episode_candidates(user_id=user_id)
+        candidates = self._get_episode_candidates()
         items_processed = len(candidates)
         
         # Группируем по теме
@@ -368,40 +362,36 @@ class MemoryConsolidator:
         
         return result
     
-    def _get_episode_candidates(self, user_id: Optional[str] = None) -> List[Episode]:
+    def _get_episode_candidates(self) -> List[Episode]:
         """
         Получает эпизоды-кандидаты для консолидации
-        
-        Args:
-            user_id: ID пользователя для персональной консолидации
         """
         # Значимые эпизоды
         significant = self.episodic.get_significant_episodes(
             min_significance=self.config["min_significance"],
             limit=self.config["max_consolidation_batch"]
         )
-
+        
         # Часто используемые (через поиск)
-        # === ФАЗА 5: Персонализация — фильтр по user_id ===
-        all_episodes = self.episodic.search_episodes(limit=100, user_id=user_id)
-
+        all_episodes = self.episodic.search_episodes(limit=100)
+        
         # Фильтруем по критериям
         candidates = []
         cutoff_time = datetime.now() - timedelta(hours=self.config["min_age_hours"])
-
+        
         seen_ids = set()
         for ep in significant + all_episodes:
             if ep.id in seen_ids:
                 continue
             seen_ids.add(ep.id)
-
+            
             # Проверяем возраст
             if ep.timestamp < cutoff_time:
                 # Проверяем частоту использования ИЛИ эмоциональную значимость
                 if (ep.access_count >= self.config["min_access_count"] or
                     abs(ep.emotion_impact) >= self.config["emotion_boost_threshold"]):
                     candidates.append(ep)
-
+        
         return candidates
     
     def _extract_common_concepts(self, episodes: List[Episode]) -> List[str]:
@@ -522,23 +512,16 @@ class MemoryConsolidator:
             ][:10]
         }
     
-    def run_scheduled_consolidation(self, user_id: Optional[str] = None) -> Dict[str, Any]:
+    def run_scheduled_consolidation(self) -> Dict[str, Any]:
         """
         Запускает плановую консолидацию (например, раз в час)
-        
-        Args:
-            user_id: ID пользователя для персональной консолидации (None для общей)
         """
-        if user_id:
-            logger.info(f"🌙 Запуск плановой консолидации для пользователя {user_id[:8]}...")
-        else:
-            logger.info("🌙 Запуск плановой консолидации...")
-
-        results = self.consolidate_all(user_id=user_id)
-
+        logger.info("🌙 Запуск плановой консолидации...")
+        
+        results = self.consolidate_all()
+        
         summary = {
             "timestamp": datetime.now().isoformat(),
-            "user_id": user_id,
             "results": {
                 key: {
                     "processed": r.items_processed,
@@ -548,9 +531,9 @@ class MemoryConsolidator:
                 for key, r in results.items()
             }
         }
-
+        
         logger.info(f"✅ Плановая консолидация завершена")
-
+        
         return summary
 
 
