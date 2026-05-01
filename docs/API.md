@@ -1,11 +1,11 @@
-# 📚 PAD+ AI — API Specification v3.5
+# 📚 PAD+ AI — API Specification v4.0
 
 *PAD+ = Pleasure, Arousal, Dominance + Curiosity, Confidence, Social Connection*
 
 ## Base URL
 
 ```
-http://localhost:8000/api/v1
+http://localhost:8080/api/v1
 ```
 
 ## Содержание
@@ -1628,5 +1628,140 @@ Timeline эпизодов.
 
 ## Interactive Documentation
 
-- **Swagger UI:** http://localhost:8000/docs
-- **ReDoc:** http://localhost:8000/redoc
+- **Swagger UI:** http://localhost:8080/docs
+- **ReDoc:** http://localhost:8080/redoc
+
+---
+
+## Аутентификация (Supabase Auth)
+
+### POST /api/v1/auth/register
+
+Регистрация нового пользователя.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!",
+  "full_name": "Имя Фамилия"
+}
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJ...",
+  "refresh_token": "eyJ...",
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "full_name": "Имя Фамилия"
+  }
+}
+```
+
+### POST /api/v1/auth/login
+
+Вход пользователя.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!"
+}
+```
+
+### GET /api/v1/auth/me
+
+Получение текущего пользователя.
+
+**Headers:** `Authorization: Bearer <token>`
+
+---
+
+## Управление ключами
+
+### GET /api/v1/keys
+
+Список API ключей пользователя.
+
+**Query:** `?offset=0&limit=100`
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "provider": "gigachat",
+      "provider_display_name": "GigaChat",
+      "name": "Мой ключ",
+      "model_preference": "GigaChat",
+      "is_default": true,
+      "is_active": true,
+      "created_at": "2026-04-07T...",
+      "has_key": true
+    }
+  ]
+}
+```
+
+### POST /api/v1/keys
+
+Добавление API ключа.
+
+**Request:**
+```json
+{
+  "provider": "gigachat",
+  "api_key": "OTkyNTczMWUt...",
+  "name": "GigaChat Key",
+  "model_preference": "GigaChat",
+  "is_default": true
+}
+```
+
+### PATCH /api/v1/keys/{key_id}
+
+Обновление ключа (модель, имя, статус).
+
+**Request:**
+```json
+{
+  "model_preference": "GigaChat-Pro"
+}
+```
+
+### DELETE /api/v1/keys/{key_id}
+
+Удаление ключа.
+
+### POST /api/v1/keys/{key_id}/set-default
+
+Установить ключ по умолчанию.
+
+### POST /api/v1/keys/{key_id}/test
+
+Тест подключения ключа.
+
+---
+
+## Провайдеры
+
+### GET /api/v1/providers
+
+Список всех доступных провайдеров.
+
+### GET /api/v1/models
+
+Список всех доступных моделей.
+
+**Query:** `?provider=openai`
+
+### GET /api/v1/providers/{provider_id}/models
+
+Модели конкретного провайдера.
+
+**Пример:** `GET /api/v1/providers/groq/models`

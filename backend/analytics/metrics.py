@@ -14,12 +14,12 @@ from typing import Dict, List, Any, Optional
 from collections import Counter, defaultdict
 import logging
 
-logger = logging.getLogger("neuromind.analytics")
+logger = logging.getLogger("PAD+.analytics")
 
 
 class Analytics:
     """
-    📊 Аналитика использования NeuroMind AI
+    📊 Аналитика использования PAD+ AI
     
     - Подсчёт сообщений и сессий
     - Граф активностей по времени

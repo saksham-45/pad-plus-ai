@@ -1,0 +1,181 @@
+{
+  "entry_points": [
+    {
+      "file": "backend/main.py",
+      "type": "FastAPI application",
+      "start_method": "uvicorn.run(main:app)",
+      "endpoints": [
+        "/ws (WebSocket основной)",
+        "/api/v1/* (HTTP API)",
+        "/health",
+        "/metrics",
+        "/xray/*"
+      ],
+      "lifecycle": "ASGI lifespan с инициализацией всех компонентов"
+    }
+  ],
+  "request_flow": [
+    "1. User Request → WebSocket / HTTP Endpoint",
+    "2. ValidationMiddleware + CSRFMiddleware",
+    "3. Anti-Loop Guard проверка на циклы",
+    "4. Safety Layer проверка безопасности",
+    "5. X-Ray Brain (центр принятия решений) → принимает решение о стратегии, модели, памяти",
+    "6. Intent Router классификация намерения",
+    "7. Memory Retrieve: RAG + Facts + Episodic + Vector + SmartCache",
+    "8. Emotion State получение текущего эмоционального состояния",
+    "9. Persona Context получение контекста личности",
+    "10. LiteLLMService генерация ответа через LLM",
+    "11. TruthLoop верификация утверждений",
+    "12. Episodic Memory сохранение эпизода",
+    "13. Response Guard pipeline: очистка + самоисцеление + тон + когнитивный слой",
+    "14. Emotion Update обновление эмоционального состояния",
+    "15. Persona Evolution эволюция личности",
+    "16. Event Bus + WebSocket Broadcast оповещения",
+    "17. X-Ray Reflection рефлексия и самоанализ",
+    "18. Result Response пользователю"
+  ],
+  "decision_center": {
+    "primary_component": "XRayBrain",
+    "file": "backend/core/xray/brain.py",
+    "class": "XRayBrain",
+    "method": "decide()",
+    "responsibilities": [
+      "Выбор стратегии обработки (simple/retrieval/reasoning/creative/reflective/learning)",
+      "Выбор LLM модели в зависимости от сложности",
+      "Решение использовать ли память и какие типы",
+      "Определение глубины анализа",
+      "Решение нужна ли верификация через TruthLoop",
+      "Выбор тона ответа"
+    ],
+    "fallback_strategy": "При ошибке всегда использует simple стратегию",
+    "conflict_points": "Нет других центров принятия решений, X-RayBrain является единственным абсолютным центром"
+  },
+  "pipeline_stages": [
+    {
+      "stage": "Safety",
+      "file": "backend/core/safety_layer.py",
+      "class": "SafetyLayer",
+      "purpose": "Проверка запроса на угрозы, санитизация, блокировка опасных запросов"
+    },
+    {
+      "stage": "Intent",
+      "file": "backend/core/intent_router.py",
+      "class": "IntentRouter",
+      "purpose": "Классификация намерения пользователя"
+    },
+    {
+      "stage": "Retrieve",
+      "file": "backend/core/pipeline.py",
+      "class": "PipelineExecutor",
+      "purpose": "Сбор контекста из всех систем памяти: RAG, Facts, Episodic, Vector, SmartCache"
+    },
+    {
+      "stage": "Generate",
+      "file": "backend/runtime/litellm_service.py",
+      "class": "LiteLLMService",
+      "purpose": "Генерация ответа через LLM с использованием API ключа пользователя"
+    },
+    {
+      "stage": "Verify",
+      "file": "backend/core/truth_loop.py",
+      "class": "TruthLoop",
+      "purpose": "Извлечение и верификация утверждений в ответе, расчёт уверенности"
+    },
+    {
+      "stage": "Remember",
+      "file": "backend/memory/*",
+      "class": "Various",
+      "purpose": "Сохранение диалога в эпизодическую, векторную и кэш память"
+    },
+    {
+      "stage": "Guard",
+      "file": "backend/core/guard/*",
+      "class": "ResponseGuard, SelfHealing, ToneEngine, CognitiveLayer",
+      "purpose": "Многоступенчатый контроль качества ответа"
+    },
+    {
+      "stage": "Emit",
+      "file": "backend/core/event_bus.py",
+      "class": "EventBus",
+      "purpose": "Рассылка событий и обновлений по WebSocket"
+    }
+  ],
+  "agents": [
+    {
+      "name": "XRayBrain",
+      "type": "Decision Agent",
+      "status": "Активен",
+      "callsite": "PipelineExecutor.execute() на 0 стадии"
+    },
+    {
+      "name": "SafetyLayer",
+      "type": "Guard Agent",
+      "status": "Активен",
+      "callsite": "Стадия 2 пайплайна"
+    },
+    {
+      "name": "IntentRouter",
+      "type": "Classification Agent",
+      "status": "Активен",
+      "callsite": "Стадия 3 пайплайна"
+    },
+    {
+      "name": "TruthLoop",
+      "type": "Verification Agent",
+      "status": "Активен",
+      "callsite": "Стадия 5 пайплайна"
+    },
+    {
+      "name": "ReflectionLoop",
+      "type": "Meta Agent",
+      "status": "Активен",
+      "callsite": "Финальная стадия пайплайна"
+    }
+  ],
+  "memory": {
+    "types_implemented": [
+      "RAG (документы пользователя)",
+      "Fact Memory (факты)",
+      "Episodic Memory (история диалогов)",
+      "Semantic Memory (процедуры)",
+      "Vector Memory (долговременная векторная память)",
+      "SmartCache (кратковременный кэш 1ч)",
+      "Roots Memory (фундаментальные принципы)",
+      "Persona Memory (личность системы и пользователей)"
+    ],
+    "storage_engine": "Chroma DB (векторный) + SQLite (реляционный)",
+    "methods": {
+      "store": "Используется автоматически после каждого диалога",
+      "get": "Вызывается на стадии Retrieve пайплайна",
+      "recall": "Реализовано через векторный поиск по семантической близости"
+    },
+    "consolidation": "Автоматическая консолидация каждые 10 диалогов"
+  },
+  "tools": [
+    "LiteLLMService (LLM вызовы)",
+    "EventBus (система событий)",
+    "WebSocketManager (вебсокеты)",
+    "HealthMonitor (мониторинг здоровья)",
+    "MetricsCollector (метрики)",
+    "CacheManager (Redis кэш)",
+    "CircuitBreaker (защита БД)"
+  ],
+  "dead_components": [
+    "MetaController (устаревший, заменён на X-Ray Brain)",
+    "MemoryManager (устаревший, заменён на отдельные модули памяти)",
+    "Old FactMemory (заменён на FactMemoryChroma)",
+    "HierarchicalPlanner (модуль автономии, нигде не вызывается)",
+    "Planner (модуль автономии, нигде не вызывается)",
+    "KnowledgeGraph (реализован но не используется в пайплайне)",
+    "Dreams System (реализован но вызывается только заглушка)"
+  ],
+  "risks": [
+    "X-RayBrain принимает все решения, единственная точка отказа",
+    "Нет механизма отката решений Brain",
+    "Контекст теряется между стадиями пайплайна через исключения и fallback",
+    "Множественные независимые try/except блоки, ошибки тихо проглатываются",
+    "Fail Strategy работает только на уровне пайплайна, нет глобального состояния деградации",
+    "Конфликт между 7 различными системами памяти с одинаковыми интерфейсами",
+    "Нет централизованного управления транзакциями памяти"
+  ]
+}

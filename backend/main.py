@@ -14,14 +14,11 @@ from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
 
-# Загружаем переменные окружения из .env файла
-load_dotenv()
+# Загружаем переменные окружения из .env файла (в корне проекта) ДО всех импортов
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-
-# Настройка логирования
+# Настройка логирования (единожды)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -36,7 +33,16 @@ sys.path.insert(0, str(Path(__file__).parent))
 from core.anti_directive import ANTI_DIRECTIVE, check_integrity
 from core.cache_manager import get_cache_manager
 from core.monitoring import get_monitoring_system
+from core.dependencies import register_dependencies
 from api import routes
+
+# Импортируем core модули ПОСЛЕ загрузки .env
+from core.supabase_client import get_supabase, check_database_connection
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 
 @asynccontextmanager
@@ -45,6 +51,10 @@ async def lifespan(app: FastAPI):
     # === STARTUP ===
     logger.info("🧠 PAD+ AI v3.5 запускается...")
     
+    # Регистрация зависимостей (Вторая очередь улучшений)
+    register_dependencies()
+    logger.info("✅ Dependency Injection инициализирован")
+
     # Проверка целостности ANTI_DIRECTIVE
     if not check_integrity():
         logger.error("❌ Целостность ANTI_DIRECTIVE нарушена!")
@@ -97,10 +107,14 @@ async def lifespan(app: FastAPI):
 
 
 # CORS middleware — настройка для production
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5174")
+backend_port = int(os.getenv("BACKEND_PORT", "8080"))
+
+# CSRF защита
+csrf_secret_key = os.getenv("CSRF_SECRET_KEY")
 allow_origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173", 
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
     "http://localhost:3000",
     frontend_url
 ]
@@ -126,7 +140,7 @@ else:
     # Для локальной разработки добавляем дополнительные origins
     allow_origins.extend([
         "http://127.0.0.1:5173",
-        "http://0.0.0.0:5173"
+        "http://localhost:5173"
     ])
 
 # Убедимся, что все origins уникальны
@@ -139,9 +153,48 @@ logger.info(f"🏭 Production mode: {is_production}")
 app = FastAPI(
     title="PAD+ AI",
     description="Когнитивный слой, добавляющий эмоции и самосознание любому LLM",
-    version="3.5.0",
+    version="4.0.0",
     lifespan=lifespan
 )
+
+
+# ============================================================================
+# VALIDATION & SANITIZATION MIDDLEWARE
+# ============================================================================
+
+from core.validation_middleware import ValidationMiddleware
+
+# Добавляем middleware валидации и санитизации запросов
+# Должен быть добавлен ДО CORS middleware для корректной обработки
+app.add_middleware(
+    ValidationMiddleware,
+    max_body_length=50 * 1024 * 1024,  # 50MB лимит тела запроса (для загрузки файлов)
+    max_query_length=1000,   # 1KB лимит query параметра
+    block_threats=True,      # Блокировать запросы с угрозами
+    exclude_paths=[
+        "/metrics",
+        "/health",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+        "/api/v1/documents/upload",  # Исключаем загрузку файлов из проверки размера
+    ]
+)
+
+logger.info("🛡️ ValidationMiddleware установлен")
+
+# Добавляем CSRF middleware для защиты от межсайтовой подделки запросов
+from core.csrf_middleware import CSRFMiddleware
+
+app.add_middleware(
+    CSRFMiddleware,
+    secret_key=csrf_secret_key,
+    cookie_secure=False,  # Включить в production (HTTPS)
+    cookie_httponly=True,
+    cookie_samesite="lax",
+)
+
+logger.info("🛡️ CSRFMiddleware установлен")
 
 
 # ПРИНУДИТЕЛЬНЫЕ CORS-ЗАГОЛОВКИ (для всех ответов, даже при ошибках)
@@ -193,8 +246,35 @@ app.add_middleware(
 
 
 # Подключение роутов
-app.include_router(routes.router, prefix="/api/v1")
+# app.include_router(routes.router, prefix="/api/v1")  # Закомментировано - используем frontend_router
 
+# Подключение роутов for frontend (аутентификация, ключи, чат)
+from api.frontend_routes import router as frontend_router
+app.include_router(frontend_router)  # Без префикса - уже есть в router
+
+# Подключение роутов для управления пользователями и настройками
+from api.user_routes import router as user_router
+app.include_router(user_router)
+
+# Подключение роутов для истории диалогов
+from api.dialog_routes import router as dialog_router
+app.include_router(dialog_router)
+
+# Подключение роутов для управления документами и коллекциями
+from api.document_routes import router as document_router
+app.include_router(document_router)
+
+# Подключение роутов для управления файлами (ДОБАВЛЕНО ПОСЛЕ document_routes)
+from api.file_routes import router as file_router
+app.include_router(file_router)
+
+# Подключение X-Ray routes (система полной наблюдаемости)
+from api.xray_routes import router as xray_router
+app.include_router(xray_router)
+
+# Подключение Metrics routes (мониторинг и метрики)
+from api.metrics_routes import router as metrics_router
+app.include_router(metrics_router)
 
 # === WEBSOCKET CONNECTION MANAGER ===
 class ConnectionManager:
@@ -205,30 +285,46 @@ class ConnectionManager:
     
     async def connect(self, websocket: WebSocket):
         """Принять новое соединение"""
-        await websocket.accept()
-        self.active_connections.append(websocket)
-        logger.info(f"📡 WebSocket подключен. Всего: {len(self.active_connections)}")
+        try:
+            await websocket.accept()
+            self.active_connections.append(websocket)
+            logger.info(f"📡 WebSocket подключен. Всего: {len(self.active_connections)}")
+        except Exception as e:
+            logger.error(f"🔴 Ошибка подключения WebSocket: {e}", exc_info=True)
+            raise
     
     def disconnect(self, websocket: WebSocket):
         """Отключить соединение"""
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-        logger.info(f"📡 WebSocket отключен. Всего: {len(self.active_connections)}")
+        try:
+            if websocket in self.active_connections:
+                self.active_connections.remove(websocket)
+            logger.info(f"📡 WebSocket отключен. Всего: {len(self.active_connections)}")
+        except Exception as e:
+            logger.error(f"🔴 Ошибка отключения WebSocket: {e}", exc_info=True)
     
     async def broadcast(self, message: dict):
         """Разослать сообщение всем клиентам"""
-        for connection in self.active_connections:
+        errors = []
+        for connection in self.active_connections[:]:  # Копия списка для безопасности
             try:
                 await connection.send_json(message)
             except Exception as e:
-                logger.error(f"Ошибка отправки: {e}")
+                error_msg = f"Ошибка отправки WebSocket: {e}"
+                logger.error(error_msg, exc_info=True)
+                errors.append(error_msg)
+        
+        if errors and len(errors) == len(self.active_connections):
+            logger.warning(f"🔴 Все WebSocket соединения неактивны ({len(errors)} ошибок)")
     
     async def send_personal(self, websocket: WebSocket, message: dict):
         """Отправить личное сообщение"""
         try:
             await websocket.send_json(message)
+        except RuntimeError as e:
+            # WebSocket закрыт
+            logger.warning(f"🟡 WebSocket закрыт во время отправки: {e}")
         except Exception as e:
-            logger.error(f"Ошибка отправки: {e}")
+            logger.error(f"🔴 Ошибка отправки WebSocket: {e}", exc_info=True)
 
 
 manager = ConnectionManager()
@@ -238,8 +334,11 @@ manager = ConnectionManager()
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket эндпоинт для real-time обновлений"""
-    await manager.connect(websocket)
-    
+    # Принимаем соединение сразу без проверок для того чтобы клиент мог подключиться
+    await websocket.accept()
+    manager.active_connections.append(websocket)
+    logger.info(f"📡 WebSocket подключен. Всего: {len(manager.active_connections)}")
+
     try:
         # Отправляем начальное состояние
         await manager.send_personal(websocket, {
@@ -247,7 +346,54 @@ async def websocket_endpoint(websocket: WebSocket):
             "message": "Connected to PAD+ AI",
             "timestamp": datetime.now().isoformat()
         })
-        
+
+        # Подписываемся на события
+        try:
+            from core.event_bus import get_event_bus, EventType
+            bus = get_event_bus()
+
+            async def on_mind_state_update(event):
+                """Отправляем mind_state_update при событии"""
+                state = {"type": "mind_state_update"}
+
+                # Эмоции
+                try:
+                    from emotion.pad_model import get_pad_model
+                    pad = get_pad_model()
+                    state["emotion"] = pad.get_state().to_dict()
+                except:
+                    pass
+
+                # RAG
+                try:
+                    from memory.rag import get_rag
+                    rag = get_rag()
+                    state["memory"] = {"rag": rag.get_stats()}
+                except:
+                    pass
+
+                # Knowledge Graph
+                try:
+                    from knowledge.graph import get_knowledge_graph
+                    g = get_knowledge_graph()
+                    state["knowledge"] = g.get_stats()
+                except:
+                    pass
+
+                # Health
+                try:
+                    from core.health_monitor import get_health_monitor
+                    health = get_health_monitor()
+                    state["health"] = health.assess_health()
+                except:
+                    pass
+
+                await manager.broadcast(state)
+
+            bus.subscribe_async(EventType.MIND_STATE_UPDATE, on_mind_state_update)
+        except Exception as e:
+            logger.warning(f"EventBus subscription error: {e}")
+
         while True:
             # Получаем сообщение
             data = await websocket.receive_text()
@@ -263,6 +409,11 @@ async def websocket_endpoint(websocket: WebSocket):
                         "timestamp": datetime.now().isoformat()
                     })
                 
+                elif msg_type == "pong":
+                    # Heartbeat response — обновляем last activity
+                    # WebSocketManager автоматически отслеживает активность
+                    pass
+
                 elif msg_type == "subscribe":
                     # Подписка на обновления
                     channels = message.get("channels", ["all"])
@@ -396,15 +547,19 @@ async def broadcast_autonomy_event(event: str, data: dict):
     })
 
 
-# Корневой эндпоинт
+# Корневой эндпоинт — теперь отдает frontend
 @app.get("/")
 async def root():
-    """Корневой эндпоинт"""
+    """Корневой эндпоинт — отдает frontend"""
+    frontend_dist_path = Path(__file__).parent.parent / "frontend" / "dist"
+    index_path = frontend_dist_path / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
     return {
         "name": "PAD+ AI",
-        "version": "3.5.0",
+        "version": "4.0.0",
         "status": "active",
-        "message": "Когнитивный слой активен",
+        "message": "Когнитивный слой активен. Frontend не найден.",
         "timestamp": datetime.now().isoformat()
     }
 
@@ -431,12 +586,69 @@ async def get_anti_directive():
     }
 
 
+# === MOUNT FRONTEND STATIC FILES (в конце, после всех API endpoints) ===
+# Путь к собранному frontend
+frontend_dist_path = Path(__file__).parent.parent / "frontend" / "dist"
+
+if frontend_dist_path.exists():
+    # Монтируем статику для /assets
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist_path / "assets")), name="assets")
+    
+    # Catch-all для frontend SPA (должен быть ПОСЛЕ всех API routes)
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Отдаем frontend для всех не-API запросов"""
+        # Игнорируем API и WebSocket запросы
+        if (full_path.startswith("api/") or 
+            full_path.startswith("ws") or
+            full_path == "health" or
+            full_path == "anti-directive"):
+            return {"error": "Not found"}
+        
+        # Если запрошен файл, пробуем отдать его
+        file_path = frontend_dist_path / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+        
+        # Иначе отдаем index.html (для SPA роутинга)
+        index_path = frontend_dist_path / "index.html"
+        if index_path.exists():
+            return FileResponse(str(index_path))
+        
+        return {"error": "Not found"}
+else:
+    logger.warning(f"⚠️ Frontend dist не найден: {frontend_dist_path}")
+
+
+# ============================================================================
+# PROMETHEUS METRICS
+# ============================================================================
+
+@app.get("/metrics")
+async def metrics():
+    """
+    Prometheus metrics endpoint
+    
+    Returns:
+        Метрики в формате Prometheus
+    """
+    from core.metrics import get_metrics, get_metrics_content_type, update_memory_usage
+    
+    # Обновляем метрики
+    update_memory_usage()
+    
+    return Response(
+        content=get_metrics(),
+        media_type=get_metrics_content_type()
+    )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
+        port=backend_port,
         reload=True,
         log_level="info"
     )

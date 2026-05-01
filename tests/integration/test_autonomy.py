@@ -4,15 +4,27 @@
 
 import pytest
 import requests
-import json
+import socket
 
 BASE_URL = "http://localhost:8000/api/v1"
+
+
+def _is_server_available():
+    """Проверяет доступность сервера"""
+    try:
+        response = requests.get(f"{BASE_URL}/chat", timeout=2)
+        return True
+    except (requests.ConnectionError, requests.Timeout):
+        return False
+
 
 @pytest.mark.integration
 @pytest.mark.autonomy
 @pytest.mark.slow
 def test_chat_with_quality():
     """Тест чата с самооценкой качества"""
+    if not _is_server_available():
+        pytest.skip("Сервер не запущен на localhost:8000")
     print("\n🧪 Тест чата с самооценкой...")
     
     response = requests.post(
@@ -40,6 +52,8 @@ def test_chat_with_quality():
 @pytest.mark.autonomy
 def test_autonomy_status():
     """Тест статуса автономности"""
+    if not _is_server_available():
+        pytest.skip("Сервер не запущен на localhost:8000")
     print("\n🧪 Тест статуса автономности...")
     
     response = requests.get(f"{BASE_URL}/autonomy/status")
@@ -62,6 +76,8 @@ def test_autonomy_status():
 @pytest.mark.autonomy
 def test_multiple_chats():
     """Несколько чатов для тестирования авто-рефлексии"""
+    if not _is_server_available():
+        pytest.skip("Сервер не запущен на localhost:8000")
     print("\n🧪 Тестирование нескольких диалогов...")
     
     prompts = [

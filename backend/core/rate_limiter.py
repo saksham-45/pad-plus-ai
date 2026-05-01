@@ -15,7 +15,7 @@ import json
 import os
 import logging
 
-logger = logging.getLogger("neuromind.ratelimit")
+logger = logging.getLogger("PAD+.ratelimit")
 
 
 class LimitType(Enum):
