@@ -465,6 +465,7 @@ class PipelineExecutor:
             
             # Санитизация если нужно
             if safety_check.action.value == "sanitize":
+                nonlocal user_message
                 user_message = safety.sanitize_input(user_message)
             return None
 
