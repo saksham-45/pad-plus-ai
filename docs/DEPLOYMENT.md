@@ -12,7 +12,7 @@
 1. Подключите репозиторий к Render
 2. Создайте **Web Service**:
    - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT`
+   - **Start Command:** `gunicorn --worker-class uvicorn.workers.UvicornWorker --workers 1 --bind 0.0.0.0:$PORT backend.main:app`
 
 3. Добавьте **Environment Variables**:
    ```
