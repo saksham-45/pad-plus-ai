@@ -126,7 +126,6 @@ async def lifespan(app: FastAPI):
 
 # CORS middleware — настройка для production
 frontend_url = os.getenv("FRONTEND_URL", "")
-backend_port = int(os.getenv("PORT", os.getenv("BACKEND_PORT", "8000")))
 
 # CSRF защита
 csrf_secret_key = os.getenv("CSRF_SECRET_KEY")
@@ -135,9 +134,22 @@ csrf_secret_key = os.getenv("CSRF_SECRET_KEY")
 is_production = (
     os.getenv("RENDER") == "true" or 
     os.getenv("RENDER_EXTERNAL_HOSTNAME") or
+    os.getenv("RENDER") is not None or  # Любое значение RENDER
     "onrender.com" in str(frontend_url) or
     "render.app" in str(frontend_url)
 )
+
+# ⚠️ КРИТИЧЕСКИ ВАЖНО: Порт для Render
+# В Render порт ВСЕГДА передаётся через переменную окружения PORT
+# Если PORT не установлен, используем 8000 по умолчанию
+render_port = os.getenv("PORT")
+if render_port:
+    backend_port = int(render_port)
+    logger.info(f"✅ Render PORT environment variable detected: {backend_port}")
+else:
+    backend_port = 8000
+    logger.warning(f"⚠️ PORT environment variable NOT set! Using default: {backend_port}")
+    logger.warning(f"⚠️ If deploying to Render, ensure PORT is set in environment variables!")
 
 logger.info(f"🏭 Production mode: {is_production}")
 logger.info(f"🌍 FRONTEND_URL: {frontend_url if frontend_url else '(not set)'}")
@@ -678,24 +690,15 @@ if __name__ == "__main__":
     import uvicorn
     
     # В production не используем reload
-    reload = False if is_production else False  # Всегда False для стабильности
+    reload = False if is_production else False
     
-    # Получаем порт из переменной окружения PORT (стандарт для Render)
-    # Явно проверяем PORT перед использованием backend_port
-    render_port = os.getenv("PORT")
-    if render_port:
-        port = int(render_port)
-        logger.info(f"🔌 Render PORT environment variable detected: {port}")
-    else:
-        port = backend_port
-        logger.warning(f"⚠️ PORT environment variable not set, using default: {port}")
-    
-    logger.info(f"🚀 Starting server on port {port} (production: {is_production})")
+    logger.info(f"🚀 Starting server on port {backend_port} (production: {is_production})")
+    logger.info(f"📡 Binding to 0.0.0.0:{backend_port}")
     
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=port,
+        port=backend_port,
         reload=reload,
         log_level="info" if is_production else "debug"
     )
