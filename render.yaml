@@ -11,7 +11,7 @@ services:
       cd .. && \
       python scripts/apply_migrations.py && \
       python scripts/preload_chroma_model.py
-    startCommand: cd backend && gunicorn main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    startCommand: python -c "import os; port=int(os.getenv('PORT',8000)); print(f'🚀 Starting on port {port}')" && cd backend && gunicorn main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --workers 1 --timeout 120
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
