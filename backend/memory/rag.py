@@ -26,12 +26,23 @@ try:
     chromadb = _chromadb
     Settings = _Settings
     chromadb_available = True
+    logger.info("✅ ChromaDB доступен")
 except Exception as e:
     import logging
     logging.getLogger("PAD+.rag").warning(f"⚠️ ChromaDB недоступен ({e}), используем SQLite")
     chromadb = None
     Settings = None
     chromadb_available = False
+
+# Sentence Transformers для эмбеддингов
+sentence_transformers_available = False
+try:
+    from sentence_transformers import SentenceTransformer
+    sentence_transformers_available = True
+    logger.info("✅ Sentence Transformers доступен")
+except Exception as e:
+    logger.warning(f"⚠️ Sentence Transformers недоступен ({e})")
+    SentenceTransformer = None
 
 logger = logging.getLogger("PAD+.rag")
 

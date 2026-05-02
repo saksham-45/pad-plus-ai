@@ -29,6 +29,7 @@ networkx>=3.2
 
 # ChromaDB — Vector Database
 chromadb>=1.0.0
+sentence-transformers>=2.2.0
 numpy>=2.0.0
 orjson>=3.9.0
 onnxruntime>=1.14.0

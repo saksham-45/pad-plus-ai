@@ -167,7 +167,7 @@ export function ChatInterface({ selectedModel, user }) {
                       : 'bg-gray-800 text-text-primary'
                   }`}
                 >
-                  <div className="text-2xl whitespace-pre-wrap">{msg.content}</div>
+                  <div className="text-base whitespace-pre-wrap">{msg.content}</div>
                   {msg.streaming && (
                     <span className="inline-block w-2 h-4 ml-1 bg-primary animate-pulse align-middle" />
                   )}
@@ -187,7 +187,7 @@ export function ChatInterface({ selectedModel, user }) {
             onKeyPress={handleKeyPress}
             placeholder="Введите сообщение..."
             disabled={loading}
-            className="flex-1 px-5 py-3 bg-gray-800 border border-border rounded-xl text-text-primary text-3xl focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+            className="flex-1 px-5 py-3 bg-gray-800 border border-border rounded-xl text-text-primary text-base focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
           />
           <Button
             onClick={sendMessage}

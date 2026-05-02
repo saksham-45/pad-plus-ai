@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  base: '/',
   server: {
     port: 5174,
     proxy: {
@@ -30,7 +31,6 @@ export default defineConfig({
             socket.on('error', (err) => {
               console.log('🔌 WebSocket socket error:', err.message);
             });
-            // Исправляем заголовок для корректной работы WebSocket
             proxyReq.setHeader('Connection', 'Upgrade');
           });
         }
@@ -47,6 +47,16 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true
+    sourcemap: false,
+    minify: 'terser',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          supabase: ['@supabase/supabase-js'],
+          charts: ['recharts', 'reactflow']
+        }
+      }
+    }
   }
 })

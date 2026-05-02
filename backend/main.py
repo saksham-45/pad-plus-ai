@@ -107,47 +107,46 @@ async def lifespan(app: FastAPI):
 
 
 # CORS middleware — настройка для production
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5174")
-backend_port = int(os.getenv("BACKEND_PORT", "8080"))
+frontend_url = os.getenv("FRONTEND_URL", "")
+backend_port = int(os.getenv("PORT", os.getenv("BACKEND_PORT", "8000")))
 
 # CSRF защита
 csrf_secret_key = os.getenv("CSRF_SECRET_KEY")
+
+# Определение production среды
+is_production = (
+    os.getenv("RENDER") == "true" or 
+    os.getenv("RENDER_EXTERNAL_HOSTNAME") or
+    "onrender.com" in str(frontend_url) or
+    "render.app" in str(frontend_url)
+)
+
+logger.info(f"🏭 Production mode: {is_production}")
+logger.info(f"🌍 FRONTEND_URL: {frontend_url if frontend_url else '(not set)'}")
+logger.info(f"🔌 Backend port: {backend_port}")
+
+# Настройка allow_origins
 allow_origins = [
     "http://localhost:5174",
     "http://127.0.0.1:5174",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "http://localhost:3000",
-    frontend_url
 ]
 
-# Автоматическое определение production среды
-is_production = (
-    os.getenv("RENDER") or 
-    os.getenv("RENDER_EXTERNAL_HOSTNAME") or
-    "onrender.com" in str(frontend_url)
-)
+# Добавляем frontend URL из переменной окружения
+if frontend_url:
+    # Убираем протокол если есть
+    clean_url = frontend_url.replace("https://", "").replace("http://", "")
+    allow_origins.append(f"https://{clean_url}")
+    allow_origins.append(f"http://{clean_url}")
 
-if is_production:
-    # Добавляем production URL из переменной окружения
-    if frontend_url and "onrender.com" in frontend_url:
-        allow_origins.append(frontend_url)
-    else:
-        # Резервные варианты для Render
-        allow_origins.extend([
-            "https://padplus-ai-frontend.onrender.com",
-            "https://padplus-ai-backend.onrender.com"
-        ])
-else:
-    # Для локальной разработки добавляем дополнительные origins
-    allow_origins.extend([
-        "http://127.0.0.1:5173",
-        "http://localhost:5173"
-    ])
+# Для Render добавляем wildcard если нет конкретного URL
+if is_production and not frontend_url:
+    logger.warning("⚠️ FRONTEND_URL не настроен, разрешаем все origins для Render")
+    # В production с Render мы будем динамически проверять origin
 
-# Убедимся, что все origins уникальны
-allow_origins = list(set(allow_origins))
-
-logger.info(f"🌐 CORS настроен для origins: {allow_origins}")
-logger.info(f"🏭 Production mode: {is_production}")
+logger.info(f"🌐 CORS configured origins: {allow_origins[:3]}...")
 
 # Создание приложения
 app = FastAPI(
@@ -200,7 +199,7 @@ logger.info("🛡️ CSRFMiddleware установлен")
 # ПРИНУДИТЕЛЬНЫЕ CORS-ЗАГОЛОВКИ (для всех ответов, даже при ошибках)
 @app.middleware("http")
 async def force_cors_headers(request, call_next):
-    """Принудительно добавляет CORS-заголовки к КАЖДОМУ ответу, даже при ошибках"""
+    """Приндуительно добавляет CORS-заголовки к КАЖДОМУ ответу, даже при ошибках"""
     try:
         response = await call_next(request)
     except Exception as e:
@@ -211,26 +210,39 @@ async def force_cors_headers(request, call_next):
             content={"detail": "Internal Server Error", "error": str(e)}
         )
     
-    # ПРИНУДИТЕЛЬНО добавляем CORS-заголовки к любому ответу
+    # Получаем origin из запроса
     origin = request.headers.get("origin")
-    if origin and origin in allow_origins:
-        response.headers["Access-Control-Allow-Origin"] = origin
-    else:
-        # Если origin не в списке, используем первый разрешенный
-        response.headers["Access-Control-Allow-Origin"] = (
-            allow_origins[0] if allow_origins else "*"
-        )
     
-    response.headers["Access-Control-Allow-Credentials"] = "true"
+    # В production с динамическими origin'ами разрешаем все onrender.com домены
+    if is_production:
+        if origin and ("onrender.com" in origin or "render.app" in origin):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        elif origin and origin in allow_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        else:
+            # Для production без конкретного origin - не устанавливаем конкретный origin
+            pass
+    else:
+        # В development - строго по списку
+        if origin and origin in allow_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        elif allow_origins:
+            response.headers["Access-Control-Allow-Origin"] = allow_origins[0]
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+    
     response.headers["Access-Control-Allow-Methods"] = (
         "GET, POST, PUT, DELETE, OPTIONS, PATCH"
     )
     response.headers["Access-Control-Allow-Headers"] = (
-        "Content-Type, Authorization"
+        "Content-Type, Authorization, X-CSRF-Token"
     )
     
     # Обработка preflight запросов OPTIONS
     if request.method == "OPTIONS":
+        response.headers["Access-Control-Max-Age"] = "3600"
         return response
     
     return response
@@ -238,10 +250,11 @@ async def force_cors_headers(request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allow_origins,
-    allow_credentials=True,
+    allow_origins=["*"],  # Будет перекрыто force_cors_headers
+    allow_credentials=False,  # Будет установлено в middleware
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Type", "Set-Cookie"],
 )
 
 
@@ -645,10 +658,14 @@ async def metrics():
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # В production не используем reload
+    reload = is_production if is_production else False
+    
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=backend_port,
-        reload=True,
-        log_level="info"
+        reload=reload,
+        log_level="info" if is_production else "debug"
     )

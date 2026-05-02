@@ -2,15 +2,16 @@ services:
   - type: web
     name: pad-plus-ai
     runtime: python
-    plan: standard
+    plan: free
     buildCommand: |
-      pip install -r requirements.txt
-      cd frontend
-      npm install
-      npm run build
-      cd ..
-      python scripts/apply_migrations.py
-    startCommand: python backend/main.py
+      pip install -r requirements.txt && \
+      cd frontend && \
+      npm install && \
+      npm run build && \
+      cd .. && \
+      python scripts/apply_migrations.py && \
+      python scripts/preload_chroma_model.py
+    startCommand: cd backend && gunicorn main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --workers 1 --timeout 120
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -25,6 +26,18 @@ services:
           name: pad-plus-redis
           type: redis
           property: connectionString
+      - key: FRONTEND_URL
+        sync: false
+      - key: CSRF_SECRET_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ENCRYPTION_SALT
+        sync: false
+      - key: LOG_LEVEL
+        value: info
+      - key: CHROMA_PERSIST_DIR
+        value: /opt/render/project/src/data/chroma
 
   - type: redis
     name: pad-plus-redis
@@ -35,5 +48,5 @@ databases:
   - name: pad-plus-db
     databaseName: padplus
     user: padplus
-    plan: standard
+    plan: starter
     ipAllowList: []
