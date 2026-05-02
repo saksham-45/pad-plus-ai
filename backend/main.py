@@ -8,6 +8,7 @@ PAD+ = Pleasure, Arousal, Dominance + Curiosity, Confidence, Social Connection
 import json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -50,47 +51,64 @@ async def lifespan(app: FastAPI):
     """Жизненный цикл приложения"""
     # === STARTUP ===
     logger.info("🧠 PAD+ AI v3.5 запускается...")
+    start_time = time.time()
     
     # Регистрация зависимостей (Вторая очередь улучшений)
+    logger.info("📦 Регистрация зависимостей...")
     register_dependencies()
-    logger.info("✅ Dependency Injection инициализирован")
+    logger.info(f"✅ Dependency Injection инициализирован ({time.time()-start_time:.2f}s)")
 
     # Проверка целостности ANTI_DIRECTIVE
+    logger.info("🔒 Проверка ANTI_DIRECTIVE...")
     if not check_integrity():
         logger.error("❌ Целостность ANTI_DIRECTIVE нарушена!")
-        raise RuntimeError("Целостность ядра нарушена")
-    logger.info("✅ ANTI_DIRECTIVE проверена")
+        raise RuntimeError("Целость ядра нарушена")
+    logger.info(f"✅ ANTI_DIRECTIVE проверена ({time.time()-start_time:.2f}s)")
     
     # Инициализация кэш менеджера
+    logger.info("💾 Инициализация кэш менеджера...")
     cache_manager = get_cache_manager()
     await cache_manager.connect()
-    logger.info("✅ Cache manager инициализирован")
+    logger.info(f"✅ Cache manager инициализирован ({time.time()-start_time:.2f}s)")
     
-    # Запуск системы мониторинга
+    # Запуск системы мониторинга (откладываем на фон)
+    logger.info("📊 Запуск мониторинга...")
     monitoring_system = get_monitoring_system()
     await monitoring_system.start_monitoring()
-    logger.info("✅ Система мониторинга запущена")
+    logger.info(f"✅ Система мониторинга запущена ({time.time()-start_time:.2f}s)")
     
     # Запуск импульса
+    logger.info("💫 Запуск импульса...")
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from scripts.impulse import start_impulse
     impulse = start_impulse()
-    logger.info(f"✅ Импульс: {impulse['question']}")
+    logger.info(f"✅ Импульс: {impulse['question']} ({time.time()-start_time:.2f}s)")
     
     # Инициализация данных
+    logger.info("📁 Инициализация директорий данных...")
     data_dir = Path(__file__).parent.parent / "data"
     data_dir.mkdir(exist_ok=True)
-    logger.info(f"✅ Директория данных: {data_dir}")
     
-    # Создание файлов БД
+    # Создание файлов БД (быстро)
     db_files = ["core.db", "memory.db", "knowledge.db", "llm.db"]
     for db_file in db_files:
         db_path = data_dir / db_file
         if not db_path.exists():
             db_path.touch()
-            logger.info(f"✅ Создана БД: {db_file}")
     
-    logger.info("🚀 PAD+ AI готов к работе!")
+    logger.info(f"✅ Директория данных готова: {data_dir} ({time.time()-start_time:.2f}s)")
+    
+    # ChromaDB инициализация (можно отложить)
+    logger.info("🧠 Инициализация RAG Memory...")
+    try:
+        from memory.rag import get_rag
+        rag = get_rag()
+        logger.info(f"✅ RAG Memory инициализирована ({time.time()-start_time:.2f}s)")
+    except Exception as e:
+        logger.warning(f"⚠️ RAG Memory инициализация задерживается: {e}")
+    
+    total_time = time.time() - start_time
+    logger.info(f"🚀 PAD+ AI готов к работе! (всего: {total_time:.2f}s)")
     
     yield
     
