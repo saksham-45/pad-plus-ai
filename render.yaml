@@ -11,7 +11,7 @@ services:
       cd .. && \
       python scripts/apply_migrations.py && \
       python scripts/preload_chroma_model.py
-    startCommand: cd backend && gunicorn main:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000} --workers 1 --timeout 120
+    startCommand: python start_server.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -41,6 +41,22 @@ services:
 
   - type: redis
     name: pad-plus-redis
+    ipAllowList: []
+    plan: starter
+
+databases:
+  - name: pad-plus-db
+    databaseName: padplus
+    user: padplus
+    plan: starter
+    ipAllowList: []
+    plan: starter
+
+databases:
+  - name: pad-plus-db
+    databaseName: padplus
+    user: padplus
+    plan: starter
     ipAllowList: []
     plan: starter
 
