@@ -16,6 +16,9 @@ from datetime import datetime, timedelta
 import logging
 import math
 
+# Создаём логгер в начале
+logger = logging.getLogger("PAD+.rag")
+
 # ChromaDB для векторного поиска (опционально)
 chromadb = None
 Settings = None
@@ -28,8 +31,7 @@ try:
     chromadb_available = True
     logger.info("✅ ChromaDB доступен")
 except Exception as e:
-    import logging
-    logging.getLogger("PAD+.rag").warning(f"⚠️ ChromaDB недоступен ({e}), используем SQLite")
+    logger.warning(f"⚠️ ChromaDB недоступен ({e}), используем SQLite")
     chromadb = None
     Settings = None
     chromadb_available = False
@@ -43,8 +45,6 @@ try:
 except Exception as e:
     logger.warning(f"⚠️ Sentence Transformers недоступен ({e})")
     SentenceTransformer = None
-
-logger = logging.getLogger("PAD+.rag")
 
 # Константы
 CONTEXT_WINDOW = 5
