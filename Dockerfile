@@ -23,7 +23,7 @@ COPY . .
 RUN mkdir -p data
 
 # Экспортируем порт
-EXPOSE $PORT 8000
+EXPOSE 8000
 
 # Команда запуска
-CMD ["sh", "-c", "cd backend && python -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["python", "start_server.py"]
