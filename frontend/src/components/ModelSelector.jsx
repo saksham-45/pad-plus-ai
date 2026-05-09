@@ -57,10 +57,11 @@ export function ModelSelector({ value, onChange, keys = [] }) {
     loadAllModels();
   }, []);
 
-  const loadAllModels = async () => {
+  const loadAllModels = async (forceRefresh = false) => {
     setModelsLoading(true);
     try {
-      const response = await apiFetch('/api/v1/models');
+      const url = forceRefresh ? '/api/v1/models?refresh=true' : '/api/v1/models';
+      const response = await apiFetch(url);
       if (response.ok) {
         const data = await response.json();
         const models = (data.models || []).map(m => ({
@@ -123,8 +124,8 @@ export function ModelSelector({ value, onChange, keys = [] }) {
         className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
       />
 
-      {/* Фильтры */}
-      <div className="flex gap-2 overflow-x-auto pb-2">
+      {/* Фильтры + обновление */}
+      <div className="flex gap-2 overflow-x-auto pb-2 items-center">
         {modelFilters.map(f => (
           <button
             key={f.id}
@@ -138,6 +139,14 @@ export function ModelSelector({ value, onChange, keys = [] }) {
             {f.label}
           </button>
         ))}
+        <button
+          onClick={() => loadAllModels(true)}
+          disabled={modelsLoading}
+          className="px-3 py-1 rounded-full text-xs whitespace-nowrap text-primary hover:text-primary/80 disabled:opacity-50 ml-auto"
+          title="Обновить список моделей"
+        >
+          {modelsLoading ? '⏳' : '🔄'}
+        </button>
       </div>
 
       {/* Список моделей */}

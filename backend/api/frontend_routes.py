@@ -397,11 +397,22 @@ async def refresh_token(refresh_token: str = Header(..., alias="X-Refresh-Token"
 # ============================================================================
 
 @router.get("/providers", response_model=List[ProviderResponse])
-async def list_providers():
+async def list_providers(refresh: bool = False):
     """
     Список доступных провайдеров — строится из LiteLLM model_cost
-    + fallback на встроенный каталог
+    + fallback на встроенный каталог.
+    Кэшируется на 1 час. Используйте ?refresh=true для принудительного обновления.
     """
+    cache = get_cache_manager()
+    cache_key = "providers_list"
+
+    # Пробуем получить из кэша
+    if not refresh:
+        cached = await cache.get("providers", cache_key)
+        if cached:
+            logger.info(f"🗄️ Providers: возвращено {len(cached)} провайдеров из кэша")
+            return cached
+
     import litellm
     from runtime.litellm_service import get_litellm_service
 
@@ -521,7 +532,13 @@ async def list_providers():
                 "free_models": [],
             }
 
-    return list(providers_map.values())
+    result = list(providers_map.values())
+
+    # Сохраняем в кэш на 1 час
+    await cache.set("providers", cache_key, result, ttl=3600)
+    logger.info(f"💾 Providers: сохранено {len(result)} провайдеров в кэш")
+
+    return result
         
 
 # ============================================================================
@@ -1676,26 +1693,59 @@ async def frontend_health():
 
 
 @router.get("/models")
-async def list_models(provider: Optional[str] = None):
+async def list_models(provider: Optional[str] = None, refresh: bool = False):
     """
-    Список всех доступных моделей
-    
+    Список всех доступных моделей — с кэшированием на 1 час.
+    Используйте ?refresh=true для принудительного обновления.
+
     Args:
         provider: Опциональный фильтр по провайдеру
+        refresh: Принудительное обновление кэша
     """
+    cache = get_cache_manager()
+    cache_key = f"models_all_{provider or 'all'}"
+
+    # Пробуем получить из кэша
+    if not refresh:
+        cached = await cache.get("models", cache_key)
+        if cached:
+            logger.info(f"🗄️ Models: возвращено {len(cached.get('models', []))} моделей из кэша")
+            return cached
+
     from runtime.litellm_service import get_litellm_service
     
     litellm = get_litellm_service()
     models = litellm.get_available_models(provider)
     
-    return {"models": models}
+    result = {"models": models}
+
+    # Сохраняем в кэш на 1 час
+    await cache.set("models", cache_key, result, ttl=3600)
+    logger.info(f"💾 Models: сохранено {len(models)} моделей в кэш")
+
+    return result
 
 
 @router.get("/providers/{provider_id}/models")
-async def list_provider_models(provider_id: str, current_user: dict = Depends(get_current_user)):
+async def list_provider_models(
+    provider_id: str,
+    current_user: dict = Depends(get_current_user),
+    refresh: bool = False
+):
     """
-    Список моделей конкретного провайдера — загружает АКТУАЛЬНЫЕ модели через LiteLLM
+    Список моделей конкретного провайдера — загружает АКТУАЛЬНЫЕ модели через LiteLLM.
+    Кэшируется на 1 час. Используйте ?refresh=true для принудительного обновления.
     """
+    cache = get_cache_manager()
+    cache_key = f"provider_models_{provider_id}"
+
+    # Пробуем получить из кэша
+    if not refresh:
+        cached = await cache.get("models", cache_key)
+        if cached:
+            logger.info(f"🗄️ Provider models ({provider_id}): возвращено {len(cached.get('models', []))} моделей из кэша")
+            return cached
+
     from runtime.litellm_service import get_litellm_service
     from core.encryption import get_encryptor
 
@@ -1762,7 +1812,13 @@ async def list_provider_models(provider_id: str, current_user: dict = Depends(ge
         except Exception as e:
             logger.warning(f"⚠️ Не удалось загрузить модели для {provider_id}: {e}")
 
-    return {"models": models}
+    result = {"models": models}
+
+    # Сохраняем в кэш на 1 час
+    await cache.set("models", cache_key, result, ttl=3600)
+    logger.info(f"💾 Provider models ({provider_id}): сохранено {len(models)} моделей в кэш")
+
+    return result
 
 
 # ============================================================================

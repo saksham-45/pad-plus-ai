@@ -108,10 +108,11 @@ export default function ProvidersPage() {
     fetchKeys();
   }, []);
 
-  const fetchProviders = async () => {
+  const fetchProviders = async (forceRefresh = false) => {
     setProvidersLoading(true);
     try {
-      const response = await apiFetch('/api/v1/providers');
+      const url = forceRefresh ? '/api/v1/providers?refresh=true' : '/api/v1/providers';
+      const response = await apiFetch(url);
       if (response.ok) {
         const data = await response.json();
         // Обогащаем данные fallback-иконками если нужно
@@ -223,10 +224,13 @@ export default function ProvidersPage() {
     }
   };
 
-  const fetchModelsFromApi = async (providerId) => {
+  const fetchModelsFromApi = async (providerId, forceRefresh = false) => {
     setIsRefreshing(true);
     try {
-      const response = await apiFetch(`/api/v1/providers/${providerId}/models`);
+      const url = forceRefresh
+        ? `/api/v1/providers/${providerId}/models?refresh=true`
+        : `/api/v1/providers/${providerId}/models`;
+      const response = await apiFetch(url);
       if (response.ok) {
         const data = await response.json();
         const models = data.models || [];
@@ -268,7 +272,7 @@ export default function ProvidersPage() {
   // Обработчик кнопки обновления
   const handleRefreshModels = async () => {
     if (selectedProvider) {
-      await loadModels(selectedProvider.id, true);
+      await fetchModelsFromApi(selectedProvider.id, true);
     }
   };
 
@@ -496,13 +500,18 @@ export default function ProvidersPage() {
         {/* Refresh All Button */}
         <div className="flex justify-between items-center mb-6">
           <p className="text-sm text-gray-400">
-            Кэш моделей хранится 24 часа. Нажмите для принудительного обновления.
+            Кэш моделей хранится 1 час на сервере. Нажмите для принудительного обновления.
           </p>
           <Button
-            onClick={() => {
+            onClick={async () => {
               clearAllCache();
               setCacheStatus({ status: 'none', message: 'Кэш очищен' });
-              alert('Кэш моделей очищен! Списки обновятся при следующем открытии.');
+              // Обновляем провайдеров и модели с backend
+              await fetchProviders(true);
+              if (selectedProvider) {
+                await fetchModelsFromApi(selectedProvider.id, true);
+              }
+              alert('Список провайдеров и моделей обновлён!');
             }}
             variant="outline"
             className="flex items-center gap-2"

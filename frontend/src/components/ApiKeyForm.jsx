@@ -39,10 +39,13 @@ export function ApiKeyForm({ provider, onSuccess, onCancel }) {
     }
   }, [provider?.id]);
 
-  const loadModels = async (providerId) => {
+  const loadModels = async (providerId, forceRefresh = false) => {
     setModelsLoading(true);
     try {
-      const response = await apiFetch(`/api/v1/providers/${providerId}/models`);
+      const url = forceRefresh
+        ? `/api/v1/providers/${providerId}/models?refresh=true`
+        : `/api/v1/providers/${providerId}/models`;
+      const response = await apiFetch(url);
       if (response.ok) {
         const data = await response.json();
         const models = data.models || [];
@@ -142,10 +145,20 @@ export function ApiKeyForm({ provider, onSuccess, onCancel }) {
           </div>
 
           <div>
-            <label className="block text-sm text-text-secondary mb-1">
-              Модель по умолчанию
-              {modelsLoading && <span className="ml-2 text-xs text-text-muted">(загрузка...)</span>}
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm text-text-secondary">
+                Модель по умолчанию
+                {modelsLoading && <span className="ml-2 text-xs text-text-muted">(загрузка...)</span>}
+              </label>
+              <button
+                type="button"
+                onClick={() => loadModels(provider.id, true)}
+                disabled={modelsLoading}
+                className="text-xs text-primary hover:text-primary/80 disabled:opacity-50"
+              >
+                🔄 Обновить список
+              </button>
+            </div>
             <select
               value={modelPreference}
               onChange={(e) => setModelPreference(e.target.value)}
