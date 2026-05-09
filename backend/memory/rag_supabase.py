@@ -1,12 +1,12 @@
-"""
-🧠 RAG — Retrieval-Augmented Generation v4.0 (Supabase Vector Version)
+﻿"""
+рџ§  RAG вЂ” Retrieval-Augmented Generation v4.0 (Supabase Vector Version)
 
-Продвинутые возможности:
-- LLM-суммаризация (через GigaChat)
-- Классификация тем диалогов
-- Извлечение сущностей и связей
-- Гибридный поиск с умным ранжированием
-- Векторный поиск через Supabase Vector
+РџСЂРѕРґРІРёРЅСѓС‚С‹Рµ РІРѕР·РјРѕР¶РЅРѕСЃС‚Рё:
+- LLM-СЃСѓРјРјР°СЂРёР·Р°С†РёСЏ (С‡РµСЂРµР· GigaChat)
+- РљР»Р°СЃСЃРёС„РёРєР°С†РёСЏ С‚РµРј РґРёР°Р»РѕРіРѕРІ
+- РР·РІР»РµС‡РµРЅРёРµ СЃСѓС‰РЅРѕСЃС‚РµР№ Рё СЃРІСЏР·РµР№
+- Р“РёР±СЂРёРґРЅС‹Р№ РїРѕРёСЃРє СЃ СѓРјРЅС‹Рј СЂР°РЅР¶РёСЂРѕРІР°РЅРёРµРј
+- Р’РµРєС‚РѕСЂРЅС‹Р№ РїРѕРёСЃРє С‡РµСЂРµР· Supabase Vector
 """
 
 import os
@@ -19,51 +19,51 @@ import math
 import numpy as np
 from pathlib import Path
 
-# Создаём логгер в начале
+# РЎРѕР·РґР°С‘Рј Р»РѕРіРіРµСЂ РІ РЅР°С‡Р°Р»Рµ
 logger = logging.getLogger("PAD+.rag_supabase")
 
-# Supabase для векторного поиска
+# Supabase РґР»СЏ РІРµРєС‚РѕСЂРЅРѕРіРѕ РїРѕРёСЃРєР°
 HAS_SUPABASE = False
 HAS_PGVECTOR = False
 try:
     from supabase import create_client, Client
     HAS_SUPABASE = True
-    logger.info("✅ Supabase доступен")
+    logger.info("вњ… Supabase РґРѕСЃС‚СѓРїРµРЅ")
 except Exception as e:
-    logger.warning(f"⚠️ Supabase недоступен ({e})")
+    logger.warning(f"вљ пёЏ Supabase РЅРµРґРѕСЃС‚СѓРїРµРЅ ({e})")
     HAS_SUPABASE = False
 
 try:
     import pgvector
     HAS_PGVECTOR = True
-    logger.info("✅ pgvector доступен")
+    logger.info("вњ… pgvector РґРѕСЃС‚СѓРїРµРЅ")
 except Exception as e:
-    logger.warning(f"⚠️ pgvector недоступен ({e})")
+    logger.warning(f"вљ пёЏ pgvector РЅРµРґРѕСЃС‚СѓРїРµРЅ ({e})")
     HAS_PGVECTOR = False
 
-# Sentence Transformers для эмбеддингов
+# Sentence Transformers РґР»СЏ СЌРјР±РµРґРґРёРЅРіРѕРІ
 sentence_transformers_available = False
 try:
     from sentence_transformers import SentenceTransformer
     sentence_transformers_available = True
-    logger.info("✅ Sentence Transformers доступен")
+    logger.info("вњ… Sentence Transformers РґРѕСЃС‚СѓРїРµРЅ")
 except Exception as e:
-    logger.warning(f"⚠️ Sentence Transformers недоступен ({e})")
+    logger.warning(f"вљ пёЏ Sentence Transformers РЅРµРґРѕСЃС‚СѓРїРµРЅ ({e})")
     SentenceTransformer = None
 
-# Константы
+# РљРѕРЅСЃС‚Р°РЅС‚С‹
 CONTEXT_WINDOW = 5
-EMBEDDING_DIM = 384  # Для 'all-MiniLM-L6-v2'
+EMBEDDING_DIM = 384  # Р”Р»СЏ 'all-MiniLM-L6-v2'
 DEFAULT_COLLECTION = "rag_documents"
 
 class SupabaseRAG:
     """
-    RAG система на базе Supabase Vector
+    RAG СЃРёСЃС‚РµРјР° РЅР° Р±Р°Р·Рµ Supabase Vector
     
-    - Векторный поиск через pgvector
-    - Хранение документов в PostgreSQL
-    - Семантический поиск
-    - Классификация тем
+    - Р’РµРєС‚РѕСЂРЅС‹Р№ РїРѕРёСЃРє С‡РµСЂРµР· pgvector
+    - РҐСЂР°РЅРµРЅРёРµ РґРѕРєСѓРјРµРЅС‚РѕРІ РІ PostgreSQL
+    - РЎРµРјР°РЅС‚РёС‡РµСЃРєРёР№ РїРѕРёСЃРє
+    - РљР»Р°СЃСЃРёС„РёРєР°С†РёСЏ С‚РµРј
     """
     
     def __init__(self, collection_name: str = DEFAULT_COLLECTION):
@@ -72,49 +72,49 @@ class SupabaseRAG:
         self.embedding_model = None
         self.db_initialized = False
         
-        # Инициализация
+        # РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
         if HAS_SUPABASE:
             self._init_supabase()
         if sentence_transformers_available:
             self._init_embedding_model()
     
     def _init_supabase(self):
-        """Инициализация Supabase клиента"""
+        """РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ Supabase РєР»РёРµРЅС‚Р°"""
         try:
             supabase_url = os.getenv("SUPABASE_URL")
             supabase_key = os.getenv("SUPABASE_KEY")
             
             if not supabase_url or not supabase_key:
-                logger.warning("⚠️ SUPABASE_URL или SUPABASE_KEY не настроены")
+                logger.warning("вљ пёЏ SUPABASE_URL РёР»Рё SUPABASE_KEY РЅРµ РЅР°СЃС‚СЂРѕРµРЅС‹")
                 return
             
             self.supabase = create_client(supabase_url, supabase_key)
-            logger.info("✅ Supabase клиент инициализирован")
+            logger.info("вњ… Supabase РєР»РёРµРЅС‚ РёРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°РЅ")
             
-            # Инициализация таблицы
+            # РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ С‚Р°Р±Р»РёС†С‹
             self._init_database()
             
         except Exception as e:
-            logger.error(f"❌ Ошибка инициализации Supabase: {e}")
+            logger.error(f"вќЊ РћС€РёР±РєР° РёРЅРёС†РёР°Р»РёР·Р°С†РёРё Supabase: {e}")
     
     def _init_embedding_model(self):
-        """Инициализация модели эмбеддингов"""
+        """РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РјРѕРґРµР»Рё СЌРјР±РµРґРґРёРЅРіРѕРІ"""
         try:
             self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-            logger.info("✅ Модель эмбеддингов инициализирована")
+            logger.info("вњ… РњРѕРґРµР»СЊ СЌРјР±РµРґРґРёРЅРіРѕРІ РёРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°РЅР°")
         except Exception as e:
-            logger.error(f"❌ Ошибка инициализации модели эмбеддингов: {e}")
+            logger.error(f"вќЊ РћС€РёР±РєР° РёРЅРёС†РёР°Р»РёР·Р°С†РёРё РјРѕРґРµР»Рё СЌРјР±РµРґРґРёРЅРіРѕРІ: {e}")
     
     def _init_database(self):
-        """Инициализация таблицы в Supabase"""
+        """РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ С‚Р°Р±Р»РёС†С‹ РІ Supabase"""
         try:
-            # Создаем таблицу для документов
+            # РЎРѕР·РґР°РµРј С‚Р°Р±Р»РёС†Сѓ РґР»СЏ РґРѕРєСѓРјРµРЅС‚РѕРІ
             create_table_query = f"""
             CREATE TABLE IF NOT EXISTS {self.collection_name} (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 content TEXT NOT NULL,
                 embedding VECTOR({EMBEDDING_DIM}),
-                metadata JSONB DEFAULT '{}',
+                metadata JSONB DEFAULT '{{}}',
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 user_id TEXT,
@@ -124,32 +124,32 @@ class SupabaseRAG:
             );
             """
             
-            # Создаем индекс для векторного поиска
+            # РЎРѕР·РґР°РµРј РёРЅРґРµРєСЃ РґР»СЏ РІРµРєС‚РѕСЂРЅРѕРіРѕ РїРѕРёСЃРєР°
             create_index_query = f"""
             CREATE INDEX IF NOT EXISTS idx_{self.collection_name}_embedding 
             ON {self.collection_name} USING ivfflat (embedding vector_cosine_ops);
             """
             
-            # Применяем миграции через Supabase SQL
-            # В реальной реализации это делается через Supabase migrations
-            logger.info(f"✅ Таблица {self.collection_name} готова")
+            # РџСЂРёРјРµРЅСЏРµРј РјРёРіСЂР°С†РёРё С‡РµСЂРµР· Supabase SQL
+            # Р’ СЂРµР°Р»СЊРЅРѕР№ СЂРµР°Р»РёР·Р°С†РёРё СЌС‚Рѕ РґРµР»Р°РµС‚СЃСЏ С‡РµСЂРµР· Supabase migrations
+            logger.info(f"вњ… РўР°Р±Р»РёС†Р° {self.collection_name} РіРѕС‚РѕРІР°")
             self.db_initialized = True
             
         except Exception as e:
-            logger.error(f"❌ Ошибка инициализации базы данных: {e}")
+            logger.error(f"вќЊ РћС€РёР±РєР° РёРЅРёС†РёР°Р»РёР·Р°С†РёРё Р±Р°Р·С‹ РґР°РЅРЅС‹С…: {e}")
     
     async def store_document(self, content: str, metadata: Dict[str, Any] = None, 
                           user_id: str = None, session_id: str = None) -> str:
-        """Сохранение документа с эмбеддингом"""
+        """РЎРѕС…СЂР°РЅРµРЅРёРµ РґРѕРєСѓРјРµРЅС‚Р° СЃ СЌРјР±РµРґРґРёРЅРіРѕРј"""
         if not self.supabase or not self.embedding_model:
-            logger.warning("⚠️ Supabase или эмбеддинги не доступны")
+            logger.warning("вљ пёЏ Supabase РёР»Рё СЌРјР±РµРґРґРёРЅРіРё РЅРµ РґРѕСЃС‚СѓРїРЅС‹")
             return None
         
         try:
-            # Генерируем эмбеддинг
+            # Р“РµРЅРµСЂРёСЂСѓРµРј СЌРјР±РµРґРґРёРЅРі
             embedding = self.embedding_model.encode(content).tolist()
             
-            # Подготавливаем данные
+            # РџРѕРґРіРѕС‚Р°РІР»РёРІР°РµРј РґР°РЅРЅС‹Рµ
             document_data = {
                 "content": content,
                 "embedding": embedding,
@@ -160,40 +160,40 @@ class SupabaseRAG:
                 "updated_at": datetime.now().isoformat()
             }
             
-            # Сохраняем в Supabase
+            # РЎРѕС…СЂР°РЅСЏРµРј РІ Supabase
             result = self.supabase.table(self.collection_name).insert(document_data).execute()
             
             if result.data:
                 doc_id = result.data[0]["id"]
-                logger.info(f"✅ Документ сохранен: {doc_id}")
+                logger.info(f"вњ… Р”РѕРєСѓРјРµРЅС‚ СЃРѕС…СЂР°РЅРµРЅ: {doc_id}")
                 return str(doc_id)
             else:
-                logger.error("❌ Ошибка сохранения документа")
+                logger.error("вќЊ РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ РґРѕРєСѓРјРµРЅС‚Р°")
                 return None
                 
         except Exception as e:
-            logger.error(f"❌ Ошибка сохранения документа: {e}")
+            logger.error(f"вќЊ РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ РґРѕРєСѓРјРµРЅС‚Р°: {e}")
             return None
     
     async def search_similar(self, query: str, limit: int = 5, 
                            user_id: str = None, session_id: str = None) -> List[Dict[str, Any]]:
-        """Поиск похожих документов"""
+        """РџРѕРёСЃРє РїРѕС…РѕР¶РёС… РґРѕРєСѓРјРµРЅС‚РѕРІ"""
         if not self.supabase or not self.embedding_model:
-            logger.warning("⚠️ Supabase или эмбеддинги не доступны")
+            logger.warning("вљ пёЏ Supabase РёР»Рё СЌРјР±РµРґРґРёРЅРіРё РЅРµ РґРѕСЃС‚СѓРїРЅС‹")
             return []
         
         try:
-            # Генерируем эмбеддинг для запроса
+            # Р“РµРЅРµСЂРёСЂСѓРµРј СЌРјР±РµРґРґРёРЅРі РґР»СЏ Р·Р°РїСЂРѕСЃР°
             query_embedding = self.embedding_model.encode(query).tolist()
             
-            # Строим запрос
+            # РЎС‚СЂРѕРёРј Р·Р°РїСЂРѕСЃ
             search_query = f"""
             SELECT *, 1 - (embedding <=> '{json.dumps(query_embedding)}') as similarity
             FROM {self.collection_name}
             WHERE 1=1
             """
             
-            # Добавляем фильтры
+            # Р”РѕР±Р°РІР»СЏРµРј С„РёР»СЊС‚СЂС‹
             params = []
             if user_id:
                 search_query += " AND user_id = $1"
@@ -205,7 +205,7 @@ class SupabaseRAG:
             
             search_query += f" ORDER BY similarity DESC LIMIT {limit}"
             
-            # Выполняем поиск
+            # Р’С‹РїРѕР»РЅСЏРµРј РїРѕРёСЃРє
             result = self.supabase.rpc('rpc_execute', {
                 'query': search_query,
                 'params': params
@@ -217,11 +217,11 @@ class SupabaseRAG:
                 return []
                 
         except Exception as e:
-            logger.error(f"❌ Ошибка поиска: {e}")
+            logger.error(f"вќЊ РћС€РёР±РєР° РїРѕРёСЃРєР°: {e}")
             return []
     
     async def get_document_by_id(self, doc_id: str) -> Optional[Dict[str, Any]]:
-        """Получение документа по ID"""
+        """РџРѕР»СѓС‡РµРЅРёРµ РґРѕРєСѓРјРµРЅС‚Р° РїРѕ ID"""
         if not self.supabase:
             return None
         
@@ -234,11 +234,11 @@ class SupabaseRAG:
                 return None
                 
         except Exception as e:
-            logger.error(f"❌ Ошибка получения документа: {e}")
+            logger.error(f"вќЊ РћС€РёР±РєР° РїРѕР»СѓС‡РµРЅРёСЏ РґРѕРєСѓРјРµРЅС‚Р°: {e}")
             return None
     
     async def delete_document(self, doc_id: str) -> bool:
-        """Удаление документа"""
+        """РЈРґР°Р»РµРЅРёРµ РґРѕРєСѓРјРµРЅС‚Р°"""
         if not self.supabase:
             return False
         
@@ -246,26 +246,26 @@ class SupabaseRAG:
             result = self.supabase.table(self.collection_name).delete().eq("id", doc_id).execute()
             
             if result.data:
-                logger.info(f"✅ Документ удален: {doc_id}")
+                logger.info(f"вњ… Р”РѕРєСѓРјРµРЅС‚ СѓРґР°Р»РµРЅ: {doc_id}")
                 return True
             else:
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Ошибка удаления документа: {e}")
+            logger.error(f"вќЊ РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ РґРѕРєСѓРјРµРЅС‚Р°: {e}")
             return False
     
     async def get_stats(self) -> Dict[str, Any]:
-        """Получение статистики RAG системы"""
+        """РџРѕР»СѓС‡РµРЅРёРµ СЃС‚Р°С‚РёСЃС‚РёРєРё RAG СЃРёСЃС‚РµРјС‹"""
         if not self.supabase:
-            return {"error": "Supabase не доступен"}
+            return {"error": "Supabase РЅРµ РґРѕСЃС‚СѓРїРµРЅ"}
         
         try:
-            # Получаем общее количество документов
+            # РџРѕР»СѓС‡Р°РµРј РѕР±С‰РµРµ РєРѕР»РёС‡РµСЃС‚РІРѕ РґРѕРєСѓРјРµРЅС‚РѕРІ
             count_result = self.supabase.table(self.collection_name).select("count", count="exact").execute()
             total_count = count_result.count if count_result.count else 0
             
-            # Получаем статистику по пользователям
+            # РџРѕР»СѓС‡Р°РµРј СЃС‚Р°С‚РёСЃС‚РёРєСѓ РїРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏРј
             user_stats = self.supabase.table(self.collection_name).select("user_id", count="exact").execute()
             
             return {
@@ -277,14 +277,14 @@ class SupabaseRAG:
             }
             
         except Exception as e:
-            logger.error(f"❌ Ошибка получения статистики: {e}")
+            logger.error(f"вќЊ РћС€РёР±РєР° РїРѕР»СѓС‡РµРЅРёСЏ СЃС‚Р°С‚РёСЃС‚РёРєРё: {e}")
             return {"error": str(e)}
 
-# Глобальный экземпляр
+# Р“Р»РѕР±Р°Р»СЊРЅС‹Р№ СЌРєР·РµРјРїР»СЏСЂ
 _rag_instance = None
 
 def get_rag() -> SupabaseRAG:
-    """Глобальный доступ к RAG системе"""
+    """Р“Р»РѕР±Р°Р»СЊРЅС‹Р№ РґРѕСЃС‚СѓРї Рє RAG СЃРёСЃС‚РµРјРµ"""
     global _rag_instance
     
     if _rag_instance is None:
@@ -292,7 +292,8 @@ def get_rag() -> SupabaseRAG:
     
     return _rag_instance
 
-# Для обратной совместимости
+# Р”Р»СЏ РѕР±СЂР°С‚РЅРѕР№ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё
 def get_supabase_rag() -> SupabaseRAG:
-    """Алиас для get_rag"""
+    """РђР»РёР°СЃ РґР»СЏ get_rag"""
     return get_rag()
+

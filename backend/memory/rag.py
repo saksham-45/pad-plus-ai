@@ -19,22 +19,8 @@ import math
 # Создаём логгер в начале
 logger = logging.getLogger("PAD+.rag")
 
-# ChromaDB для векторного поиска (опционально)
-chromadb = None
-Settings = None
-chromadb_available = False
-try:
-    import chromadb as _chromadb
-    from chromadb.config import Settings as _Settings
-    chromadb = _chromadb
-    Settings = _Settings
-    chromadb_available = True
-    logger.info("✅ ChromaDB доступен")
-except Exception as e:
-    logger.warning(f"⚠️ ChromaDB недоступен ({e}), используем SQLite")
-    chromadb = None
-    Settings = None
-    chromadb_available = False
+# ChromaDB удален в пользу PostgreSQL-версии
+# Используем только PostgreSQL-реализацию RAG
 
 # Sentence Transformers для эмбеддингов
 sentence_transformers_available = False
@@ -407,68 +393,89 @@ class RAGMemory:
     """
     
     def __init__(self, persist_dir: str = None, use_llm_summarization: bool = False):
-        if persist_dir is None:
-            persist_dir = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                "data", "chroma"
-            )
+        logger.info(f"📁 Инициализация RAG Memory v3.0 (PostgreSQL) - ленивая загрузка")
         
-        logger.info(f"📁 Инициализация RAG Memory v3.0, директория: {persist_dir}")
+        self.use_llm_summarization = use_llm_summarization
+        self.conn = None
+        self.cursor = None
+        self._initialized = False
+        self._keywords_cache: Dict[str, List[str]] = {}
+    
+    def _ensure_initialized(self):
+        """Ленивая инициализация PostgreSQL"""
+        if self._initialized:
+            return
         
         try:
-            os.makedirs(persist_dir, exist_ok=True)
-            logger.info(f"✅ Директория данных создана: {persist_dir}")
-        except Exception as e:
-            logger.error(f"❌ Ошибка создания директории: {e}")
-            raise
-        
-        self.persist_dir = persist_dir
-        self.use_llm_summarization = use_llm_summarization
-        self.chroma_available = False
-
-        # Инициализируем ChromaDB с graceful degradation
-        if chromadb_available and chromadb is not None and Settings is not None:
+            import psycopg2
+            from psycopg2.extras import Json
+            db_url = os.getenv('DATABASE_URL')
+            if not db_url:
+                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
+            
+            # Добавляем таймаут подключения
+            import urllib.parse
+            parsed = urllib.parse.urlparse(db_url)
+            if 'connect_timeout' not in parsed.query:
+                # Добавляем таймаут 5 секунд для быстрой загрузки
+                query_params = urllib.parse.parse_qs(parsed.query)
+                query_params['connect_timeout'] = ['5']
+                new_query = urllib.parse.urlencode(query_params, doseq=True)
+                db_url = db_url.replace(parsed.query, new_query) if parsed.query else f"{db_url}?{new_query}"
+            
+            logger.info("🔄 Подключение к PostgreSQL для RAG Memory...")
+            self.conn = psycopg2.connect(db_url)
+            self.cursor = self.conn.cursor()
+            
+            # Включаем расширение pgcrypto для gen_random_uuid()
             try:
-                self.client = chromadb.PersistentClient(
-                    path=persist_dir,
-                    settings=Settings(anonymized_telemetry=False)
-                )
-                logger.info("✅ ChromaDB клиент инициализирован")
-
-                self.collection = self.client.get_or_create_collection(
-                    name="padplus_dialogs_v3",
-                    metadata={"description": "История диалогов PAD+ v3"}
-                )
-                logger.info(f"✅ Коллекция создана: {self.collection.count()} записей")
-                self.chroma_available = True
-            except Exception as e:
-                logger.warning(f"⚠️ ChromaDB недоступен ({e}), используем SQLite fallback")
-                self.chroma_available = False
-        else:
-            self.chroma_available = False
-
-        if not self.chroma_available:
-            self.client = None
-            self.collection = None
-            # SQLite fallback
-            import sqlite3
-            self.sqlite_path = os.path.join(persist_dir, "rag_fallback.db")
-            os.makedirs(persist_dir, exist_ok=True)
-            self.sqlite_conn = sqlite3.connect(self.sqlite_path)
-            self.sqlite_conn.execute("""
-                CREATE TABLE IF NOT EXISTS dialogs (
-                    id TEXT PRIMARY KEY,
-                    user_message TEXT,
-                    ai_response TEXT,
-                    metadata TEXT,
-                    timestamp REAL
+                self.cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
+                self.conn.commit()
+                logger.info("✅ Расширение pgcrypto включено")
+            except Exception as ext_error:
+                logger.warning(f"⚠️ Не удалось включить pgcrypto: {ext_error}")
+            
+            # Создание таблицы (без зависимости от pgvector)
+            self.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rag_dialogs (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_message TEXT NOT NULL,
+                    ai_response TEXT NOT NULL,
+                    summary TEXT,
+                    keywords TEXT[],
+                    topic TEXT DEFAULT 'общее',
+                    topic_confidence FLOAT DEFAULT 0.5,
+                    sentiment TEXT DEFAULT 'neutral',
+                    entities JSONB DEFAULT '[]',
+                    relations JSONB DEFAULT '[]',
+                    metadata JSONB DEFAULT '{}',
+                    user_id UUID,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
                 )
             """)
-            self.sqlite_conn.commit()
-            logger.info("✅ SQLite fallback инициализирован")
-
-        self._keywords_cache: Dict[str, List[str]] = {}
-        logger.info(f"🧠 RAG Memory v3.0 инициализирована (ChromaDB: {self.chroma_available})")
+            
+            # Создание индексов для производительности
+            self.cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_rag_dialogs_user_id ON rag_dialogs(user_id)
+            """)
+            self.cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_rag_dialogs_topic ON rag_dialogs(topic)
+            """)
+            self.cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_rag_dialogs_created_at ON rag_dialogs(created_at)
+            """)
+            
+            self.conn.commit()
+            self._initialized = True
+            logger.info("✅ RAG Memory PostgreSQL инициализирован")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка инициализации PostgreSQL: {e}")
+            # Fallback: продолжаем без RAG памяти
+            logger.warning("⚠️ RAG Memory будет работать без PostgreSQL")
+            self.conn = None
+            self.cursor = None
+            self._initialized = True  # Чтобы не пытаться снова
     
     def add_dialog(
         self,
@@ -478,7 +485,16 @@ class RAGMemory:
         user_id: Optional[str] = None  # === ФАЗА 2: Персонализация ===
     ) -> str:
         """Добавляет диалог в память с анализом"""
+        self._ensure_initialized()
+        
+        if not self.conn or not self.cursor:
+            logger.warning("⚠️ RAG Memory недоступен - диалог не сохранен")
+            return ""
+        
         import uuid
+        import psycopg2
+        from psycopg2.extras import Json
+        
         doc_id = str(uuid.uuid4())
 
         # Суммаризируем (простая версия, без async)
@@ -495,9 +511,6 @@ class RAGMemory:
         # Извлекаем сущности и связи
         entities = extract_entities(combined_text)
         relations = extract_relations(user_message, ai_response)
-
-        # Полный текст для поиска
-        doc_text = f"Вопрос: {user_summary}\nОтвет: {ai_summary}"
 
         # Метаданные
         meta = metadata or {}
@@ -521,23 +534,40 @@ class RAGMemory:
             "user_id": user_id  # None для общих записей
         })
 
-        # Добавляем в ChromaDB или SQLite fallback
-        if self.chroma_available:
-            self.collection.add(
-                ids=[doc_id],
-                documents=[doc_text],
-                metadatas=[meta]
+        # Добавляем в PostgreSQL
+        try:
+            db_url = os.getenv('DATABASE_URL')
+            if not db_url:
+                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
+            
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                "INSERT INTO rag_dialogs (id, user_message, ai_response, summary, keywords, topic, topic_confidence, sentiment, entities, relations, metadata, user_id, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())",
+                (
+                    doc_id,
+                    user_summary,
+                    ai_summary,
+                    f"Вопрос: {user_summary}\nОтвет: {ai_summary}",
+                    keywords,
+                    topic_info["primary_topic"],
+                    topic_info["confidence"],
+                    topic_info["sentiment"],
+                    Json(entities),
+                    Json(relations),
+                    Json(meta),
+                    user_id
+                )
             )
-        else:
-            # SQLite fallback
-            import sqlite3
-            conn = sqlite3.connect(self.sqlite_path)
-            conn.execute(
-                "INSERT INTO dialogs (id, user_message, ai_response, metadata, timestamp) VALUES (?, ?, ?, ?, ?)",
-                (doc_id, user_summary, ai_summary, json.dumps(meta, ensure_ascii=False), time.time())
-            )
+            
             conn.commit()
+            cursor.close()
             conn.close()
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка добавления диалога в PostgreSQL: {e}")
+            raise
 
         self._keywords_cache[doc_id] = keywords
 
@@ -558,6 +588,9 @@ class RAGMemory:
     ) -> str:
         """Добавляет диалог с LLM-суммаризацией"""
         import uuid
+        import psycopg2
+        from psycopg2.extras import Json
+        
         doc_id = str(uuid.uuid4())
         
         # LLM-суммаризация
@@ -574,8 +607,6 @@ class RAGMemory:
         topic_info = classify_dialog(user_message, ai_response)
         entities = extract_entities(combined_text)
         relations = extract_relations(user_message, ai_response)
-        
-        doc_text = f"Вопрос: {user_summary}\nОтвет: {ai_summary}"
         
         meta = metadata or {}
         meta.update({
@@ -595,11 +626,39 @@ class RAGMemory:
             "relations": json.dumps(relations, ensure_ascii=False)
         })
         
-        self.collection.add(
-            ids=[doc_id],
-            documents=[doc_text],
-            metadatas=[meta]
-        )
+        # Добавляем в PostgreSQL
+        try:
+            db_url = os.getenv('DATABASE_URL')
+            if not db_url:
+                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
+            
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                "INSERT INTO rag_dialogs (id, user_message, ai_response, summary, keywords, topic, topic_confidence, sentiment, entities, relations, metadata, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())",
+                (
+                    doc_id,
+                    user_summary,
+                    ai_summary,
+                    f"Вопрос: {user_summary}\nОтвет: {ai_summary}",
+                    keywords,
+                    topic_info["primary_topic"],
+                    topic_info["confidence"],
+                    topic_info["sentiment"],
+                    Json(entities),
+                    Json(relations),
+                    Json(meta)
+                )
+            )
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка добавления диалога в PostgreSQL: {e}")
+            raise
         
         self._keywords_cache[doc_id] = keywords
         
@@ -628,113 +687,119 @@ class RAGMemory:
         Returns:
             Отранжированный список диалогов
         """
-        if self.collection.count() == 0:
-            return []
-
-        # === ФАЗА 2: Фильтр по user_id и теме ===
-        where_filter = None
-        if topic_filter:
-            where_filter = {"topic": topic_filter}
-
-        # Семантический поиск
-        semantic_results = self.collection.query(
-            query_texts=[query],
-            n_results=min(n_results * 3, 20),
-            where=where_filter,
-            include=["documents", "metadatas", "distances"]
-        )
-
-        if not semantic_results or not semantic_results['ids']:
-            return []
-
-        # === ФАЗА 2: Фильтрация по user_id после поиска ===
-        if user_id:
-            # Фильтруем результаты: оставляем записи пользователя ИЛИ без user_id
-            filtered_ids = []
-            filtered_docs = []
-            filtered_metas = []
-            filtered_distances = []
+        try:
+            import psycopg2
+            from psycopg2.extras import Json
             
-            for i, doc_id in enumerate(semantic_results['ids'][0]):
-                meta = semantic_results['metadatas'][0][i] if semantic_results['metadatas'] else {}
-                record_user_id = meta.get('user_id')
+            db_url = os.getenv('DATABASE_URL')
+            if not db_url:
+                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
+            
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            
+            # Формируем SQL запрос с фильтрацией
+            sql_parts = ["SELECT id, user_message, ai_response, summary, metadata, created_at FROM rag_dialogs WHERE 1=1"]
+            params = []
+            
+            # Фильтр по теме
+            if topic_filter:
+                sql_parts.append("AND topic = %s")
+                params.append(topic_filter)
+            
+            # Фильтр по user_id
+            if user_id:
+                sql_parts.append("AND (user_id = %s OR user_id IS NULL)")
+                params.append(user_id)
+            
+            # Поиск по тексту
+            if query.strip():
+                sql_parts.append(
+                    "AND ("
+                    "user_message @@ plainto_tsquery(%s) OR "
+                    "ai_response @@ plainto_tsquery(%s) OR "
+                    "summary @@ plainto_tsquery(%s) OR "
+                    "topic ILIKE %s"
+                    ")"
+                )
+                params.extend([query, query, query, f'%{query}%'])
+            
+            # Сортировка по времени и лимит
+            sql_parts.append("ORDER BY created_at DESC LIMIT %s")
+            params.append(n_results)
+            
+            sql = " ".join(sql_parts)
+            
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            ranked_results = []
+            now = datetime.now()
+            
+            for row in rows:
+                doc_id = row[0]
+                user_message = row[1]
+                ai_response = row[2]
+                summary = row[3]
+                meta = row[4] if isinstance(row[4], dict) else json.loads(row[4]) if row[4] else {}
+                created_at = row[5].isoformat() if row[5] else datetime.now().isoformat()
                 
-                # Оставляем если user_id совпадает ИЛИ user_id отсутствует
-                if record_user_id == user_id or record_user_id is None:
-                    filtered_ids.append(doc_id)
-                    filtered_docs.append(semantic_results['documents'][0][i])
-                    filtered_metas.append(meta)
-                    filtered_distances.append(semantic_results['distances'][0][i])
-            
-            # Обновляем результаты
-            semantic_results['ids'] = [filtered_ids[:n_results]]
-            semantic_results['documents'] = [filtered_docs[:n_results]]
-            semantic_results['metadatas'] = [filtered_metas[:n_results]]
-            semantic_results['distances'] = [filtered_distances[:n_results]]
-        
-        if not semantic_results or not semantic_results['ids']:
-            return []
-        
-        query_keywords = extract_keywords(query) if use_keywords else []
-        now = datetime.now()
-        
-        ranked_results = []
-        
-        for i, doc_id in enumerate(semantic_results['ids'][0]):
-            distance = semantic_results['distances'][0][i] if semantic_results['distances'] else 0
-            semantic_score = max(0, 1 - min(distance, 2) / 2)
-            
-            if use_keywords and query_keywords:
-                meta = semantic_results['metadatas'][0][i] if semantic_results['metadatas'] else {}
-                doc_keywords_str = meta.get('keywords', '')
-                doc_keywords = doc_keywords_str.split(',') if doc_keywords_str else []
-                keyword_score = calculate_keyword_score(query_keywords, doc_keywords)
-            else:
+                # Рассчитываем scores
+                query_keywords = extract_keywords(query) if use_keywords else []
                 keyword_score = 0.0
-            
-            if use_recency:
-                meta = semantic_results['metadatas'][0][i] if semantic_results['metadatas'] else {}
-                timestamp = meta.get('timestamp', '')
-                recency_score = calculate_recency_score(timestamp, now)
-            else:
+                if use_keywords and query_keywords:
+                    doc_keywords_str = meta.get('keywords', '')
+                    doc_keywords = doc_keywords_str.split(',') if doc_keywords_str else []
+                    keyword_score = calculate_keyword_score(query_keywords, doc_keywords)
+                
                 recency_score = 0.5
+                if use_recency:
+                    recency_score = calculate_recency_score(created_at, now)
+                
+                # Базовый score
+                semantic_score = 0.7
+                
+                relevance = semantic_score * 0.7 + keyword_score * 0.3
+                combined_score = relevance * RELEVANCE_WEIGHT + recency_score * RECENCY_WEIGHT
+                
+                # Парсим сущности и связи
+                entities = []
+                relations = []
+                try:
+                    entities_json = meta.get('entities', '[]')
+                    entities = json.loads(entities_json) if entities_json else []
+                    relations_json = meta.get('relations', '[]')
+                    relations = json.loads(relations_json) if relations_json else []
+                except Exception:
+                    pass
+                
+                ranked_results.append({
+                    "id": doc_id,
+                    "document": f"Вопрос: {user_message}\nОтвет: {ai_response}",
+                    "metadata": meta,
+                    "semantic_score": round(semantic_score, 3),
+                    "keyword_score": round(keyword_score, 3),
+                    "recency_score": round(recency_score, 3),
+                    "combined_score": round(combined_score, 3),
+                    "similarity": round(combined_score, 3),
+                    # Новые поля
+                    "topic": meta.get('topic', 'общее'),
+                    "topic_confidence": meta.get('topic_confidence', 0.5),
+                    "sentiment": meta.get('sentiment', 'neutral'),
+                    "entities": entities,
+                    "relations": relations
+                })
             
-            relevance = semantic_score * 0.7 + keyword_score * 0.3
-            combined_score = relevance * RELEVANCE_WEIGHT + recency_score * RECENCY_WEIGHT
+            # Сортируем по combined_score
+            ranked_results.sort(key=lambda x: x['combined_score'], reverse=True)
             
-            meta = semantic_results['metadatas'][0][i] if semantic_results['metadatas'] else {}
+            return ranked_results
             
-            # Парсим сущности и связи
-            entities = []
-            relations = []
-            try:
-                entities_json = meta.get('entities', '[]')
-                entities = json.loads(entities_json) if entities_json else []
-                relations_json = meta.get('relations', '[]')
-                relations = json.loads(relations_json) if relations_json else []
-            except Exception:
-                pass
-            
-            ranked_results.append({
-                "id": doc_id,
-                "document": semantic_results['documents'][0][i] if semantic_results['documents'] else "",
-                "metadata": meta,
-                "semantic_score": round(semantic_score, 3),
-                "keyword_score": round(keyword_score, 3),
-                "recency_score": round(recency_score, 3),
-                "combined_score": round(combined_score, 3),
-                "similarity": round(combined_score, 3),
-                # Новые поля
-                "topic": meta.get('topic', 'общее'),
-                "topic_confidence": meta.get('topic_confidence', 0.5),
-                "sentiment": meta.get('sentiment', 'neutral'),
-                "entities": entities,
-                "relations": relations
-            })
-        
-        ranked_results.sort(key=lambda x: x['combined_score'], reverse=True)
-        
-        return ranked_results[:n_results]
+        except Exception as e:
+            logger.error(f"❌ Ошибка гибридного поиска в PostgreSQL: {e}")
+            return []
     
     def search(
         self, 
@@ -748,24 +813,52 @@ class RAGMemory:
         """
         Формирует контекст для RAG
         """
-        if self.chroma_available:
-            dialogs = self.hybrid_search(query, n_results=CONTEXT_WINDOW, user_id=user_id)
-        else:
-            # SQLite fallback — простой поиск по ключевым словам
-            import sqlite3
-            conn = sqlite3.connect(self.sqlite_path)
-            cursor = conn.execute(
-                "SELECT user_message, ai_response, metadata FROM dialogs WHERE user_message LIKE ? OR ai_response LIKE ? LIMIT 3",
-                (f'%{query}%', f'%{query}%')
+        try:
+            import psycopg2
+            from psycopg2.extras import Json
+            
+            db_url = os.getenv('DATABASE_URL')
+            if not db_url:
+                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
+            
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            
+            # Поиск по ключевым словам и темам
+            # Используем полнотекстовый поиск через tsvector
+            cursor.execute(
+                """
+                SELECT user_message, ai_response, metadata, topic, created_at
+                FROM rag_dialogs
+                WHERE (
+                    user_message @@ plainto_tsquery(%s) OR 
+                    ai_response @@ plainto_tsquery(%s) OR
+                    topic ILIKE %s
+                )
+                ORDER BY created_at DESC
+                LIMIT 3
+                """,
+                (query, query, f'%{query}%')
             )
-            dialogs = []
-            for row in cursor.fetchall():
-                dialogs.append({
-                    'metadata': json.loads(row[2]) if row[2] else {},
-                    'combined_score': 0.5,
-                    'topic': 'общее',
-                })
+            
+            rows = cursor.fetchall()
+            cursor.close()
             conn.close()
+            
+            dialogs = []
+            for row in rows:
+                meta = row[2] if isinstance(row[2], dict) else json.loads(row[2]) if row[2] else {}
+                dialogs.append({
+                    'metadata': meta,
+                    'combined_score': 0.5,
+                    'topic': row[3] if row[3] else 'общее',
+                    'timestamp': row[4].isoformat() if row[4] else datetime.now().isoformat()
+                })
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения контекста из PostgreSQL: {e}")
+            # Возвращаем пустой контекст при ошибке
+            return ""
 
         if not dialogs:
             return ""
@@ -811,70 +904,120 @@ class RAGMemory:
     
     def get_recent(self, days: int = 7, n_results: int = 10) -> List[Dict[str, Any]]:
         """Получает недавние диалоги"""
-        if self.collection.count() == 0:
-            return []
-        
-        results = self.collection.get(include=["documents", "metadatas"])
-        
-        if not results or not results['ids']:
-            return []
-        
-        now = datetime.now()
-        cutoff = now - timedelta(days=days)
-        
-        recent = []
-        for i, doc_id in enumerate(results['ids']):
-            meta = results['metadatas'][i] if results['metadatas'] else {}
-            timestamp = meta.get('timestamp', '')
+        try:
+            import psycopg2
+            from psycopg2.extras import Json
             
-            try:
-                doc_time = datetime.fromisoformat(timestamp)
-                if doc_time >= cutoff:
+            db_url = os.getenv('DATABASE_URL')
+            if not db_url:
+                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
+            
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            
+            # Получаем недавние диалоги
+            cutoff = datetime.now() - timedelta(days=days)
+            cursor.execute(
+                "SELECT id, user_message, ai_response, metadata, created_at FROM rag_dialogs WHERE created_at >= %s ORDER BY created_at DESC LIMIT %s",
+                (cutoff, n_results)
+            )
+            
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            recent = []
+            now = datetime.now()
+            
+            for row in rows:
+                doc_id = row[0]
+                user_message = row[1]
+                ai_response = row[2]
+                meta = row[3] if isinstance(row[3], dict) else json.loads(row[3]) if row[3] else {}
+                created_at = row[4].isoformat() if row[4] else datetime.now().isoformat()
+                
+                try:
+                    doc_time = datetime.fromisoformat(created_at)
+                    age_hours = (now - doc_time).total_seconds() / 3600
+                    
                     recent.append({
                         "id": doc_id,
-                        "document": results['documents'][i] if results['documents'] else "",
+                        "document": f"Вопрос: {user_message}\nОтвет: {ai_response}",
                         "metadata": meta,
-                        "timestamp": timestamp,
+                        "timestamp": created_at,
                         "topic": meta.get('topic', 'общее'),
-                        "age_hours": (now - doc_time).total_seconds() / 3600
+                        "age_hours": round(age_hours, 1)
                     })
-            except Exception:
-                continue
-        
-        recent.sort(key=lambda x: x.get('age_hours', 999), reverse=False)
-        
-        return recent[:n_results]
+                except Exception:
+                    continue
+            
+            return recent
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения недавних диалогов из PostgreSQL: {e}")
+            return []
     
     def get_topic_stats(self) -> Dict[str, int]:
         """Статистика по темам"""
-        if self.collection.count() == 0:
+        try:
+            import psycopg2
+            from psycopg2.extras import Json
+            
+            db_url = os.getenv('DATABASE_URL')
+            if not db_url:
+                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
+            
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            
+            # Получаем статистику по темам
+            cursor.execute("""
+                SELECT topic, COUNT(*) as count 
+                FROM rag_dialogs 
+                GROUP BY topic
+                ORDER BY count DESC
+                """)
+            topic_rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            topic_counts = {row[0]: row[1] for row in topic_rows} if topic_rows else {}
+            
+            return topic_counts
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения статистики по темам из PostgreSQL: {e}")
             return {}
-        
-        results = self.collection.get(include=["metadatas"])
-        
-        topic_counts = {}
-        if results and results['metadatas']:
-            for meta in results['metadatas']:
-                topic = meta.get('topic', 'общее')
-                topic_counts[topic] = topic_counts.get(topic, 0) + 1
-        
-        return topic_counts
     
     def get_entity_index(self) -> Dict[str, List[str]]:
         """Индекс сущностей -> документы"""
-        if self.collection.count() == 0:
-            return {}
-        
-        results = self.collection.get(include=["metadatas"])
-        
-        entity_index = {}
-        if results and results['metadatas']:
-            for i, meta in enumerate(results['metadatas']):
+        try:
+            import psycopg2
+            from psycopg2.extras import Json
+            
+            db_url = os.getenv('DATABASE_URL')
+            if not db_url:
+                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
+            
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            
+            # Получаем все диалоги с сущностями
+            cursor.execute(
+                "SELECT id, entities FROM rag_dialogs WHERE entities IS NOT NULL AND entities != '[]'"
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            entity_index = {}
+            
+            for row in rows:
+                doc_id = row[0]
+                entities_json = row[1]
+                
                 try:
-                    entities_json = meta.get('entities', '[]')
                     entities = json.loads(entities_json) if entities_json else []
-                    doc_id = results['ids'][i]
-                    
                     for entity in entities:
                         entity_value = entity.get('value', '')
                         if entity_value:
@@ -883,97 +1026,141 @@ class RAGMemory:
                             entity_index[entity_value].append(doc_id)
                 except Exception:
                     pass
-        
-        return entity_index
+            
+            return entity_index
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения индекса сущностей из PostgreSQL: {e}")
+            return {}
     
     def get_stats(self) -> Dict[str, Any]:
-        """Расширенная статистика RAG"""
-        if self.chroma_available:
-            total = self.collection.count()
-            results = self.collection.get(include=["metadatas"])
-        else:
-            # SQLite fallback
-            import sqlite3
-            conn = sqlite3.connect(self.sqlite_path)
-            total = conn.execute("SELECT COUNT(*) FROM dialogs").fetchone()[0]
-            results = None
+        """Расширенная статистика RAG (PostgreSQL)"""
+        try:
+            import psycopg2
+            from psycopg2.extras import Json
+            
+            # Получаем URL базы данных
+            db_url = os.getenv('DATABASE_URL')
+            if not db_url:
+                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
+            
+            # Подключаемся к PostgreSQL
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            
+            # Получаем общее количество записей
+            cursor.execute("SELECT COUNT(*) FROM rag_dialogs")
+            total = cursor.fetchone()[0]
+            
+            # Получаем статистику по темам
+            cursor.execute("""
+                SELECT topic, COUNT(*) as count 
+                FROM rag_dialogs 
+                GROUP BY topic
+                ORDER BY count DESC
+                """)
+            topic_rows = cursor.fetchall()
+            topic_counts = {row[0]: row[1] for row in topic_rows} if topic_rows else {}
+            
+            # Получаем статистику по сентиментам
+            cursor.execute("""
+                SELECT sentiment, COUNT(*) as count 
+                FROM rag_dialogs 
+                GROUP BY sentiment
+                ORDER BY count DESC
+                """)
+            sentiment_rows = cursor.fetchall()
+            sentiment_counts = {row[0]: row[1] for row in sentiment_rows} if sentiment_rows else {"positive": 0, "negative": 0, "neutral": 0}
+            
+            # Закрываем соединение
+            cursor.close()
             conn.close()
-
-        keyword_count = 0
-        summarized_count = 0
-        total_entities = 0
-        total_relations = 0
-        topic_counts = {}
-        sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
-
-        if self.chroma_available and results and results['metadatas']:
-            for meta in results['metadatas']:
-                if meta.get('keywords'):
-                    keyword_count += 1
-                if meta.get('is_summarized'):
-                    summarized_count += 1
-                
-                # Темы
-                topic = meta.get('topic', 'общее')
-                topic_counts[topic] = topic_counts.get(topic, 0) + 1
-                
-                # Сентимент
-                sentiment = meta.get('sentiment', 'neutral')
-                sentiment_counts[sentiment] = sentiment_counts.get(sentiment, 0) + 1
-                
-                # Сущности
-                try:
-                    entities = json.loads(meta.get('entities', '[]'))
-                    total_entities += len(entities)
-                    relations = json.loads(meta.get('relations', '[]'))
-                    total_relations += len(relations)
-                except Exception:
-                    pass
-        
-        return {
-            "total_dialogs": total,
-            "with_keywords": keyword_count,
-            "summarized": summarized_count,
-            "total_entities": total_entities,
-            "total_relations": total_relations,
-            "topic_distribution": topic_counts,
-            "sentiment_distribution": sentiment_counts,
-            "persist_dir": self.persist_dir,
-            "version": "3.0",
-            "features": {
-                "hybrid_search": True,
-                "keyword_extraction": True,
-                "recency_ranking": True,
-                "auto_summarization": True,
-                "topic_classification": True,
-                "entity_extraction": True,
-                "relation_extraction": True,
-                "llm_summarization": self.use_llm_summarization
+            
+            return {
+                "total_dialogs": total,
+                "with_keywords": 0,
+                "summarized": 0,
+                "total_entities": 0,
+                "total_relations": 0,
+                "topic_distribution": topic_counts,
+                "sentiment_distribution": sentiment_counts,
+                "persist_dir": "PostgreSQL",
+                "version": "3.0",
+                "features": {
+                    "hybrid_search": True,
+                    "keyword_extraction": True,
+                    "recency_ranking": True,
+                    "auto_summarization": True,
+                    "topic_classification": True,
+                    "entity_extraction": True,
+                    "relation_extraction": True,
+                    "llm_summarization": self.use_llm_summarization
+                }
             }
-        }
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения статистики RAG: {e}")
+            # Возвращаем безопасный fallback
+            return {
+                "total_dialogs": 0,
+                "with_keywords": 0,
+                "summarized": 0,
+                "total_entities": 0,
+                "total_relations": 0,
+                "topic_distribution": {},
+                "sentiment_distribution": {"positive": 0, "negative": 0, "neutral": 0},
+                "persist_dir": "PostgreSQL",
+                "version": "3.0",
+                "features": {
+                    "hybrid_search": True,
+                    "keyword_extraction": True,
+                    "recency_ranking": True,
+                    "auto_summarization": True,
+                    "topic_classification": True,
+                    "entity_extraction": True,
+                    "relation_extraction": True,
+                    "llm_summarization": self.use_llm_summarization
+                }
+            }
     
     def clear(self):
         """Очищает память"""
         try:
-            self.client.delete_collection("padplus_dialogs_v3")
-        except Exception:
-            pass
-        
-        self.collection = self.client.get_or_create_collection(
-            name="padplus_dialogs_v3",
-            metadata={"description": "История диалогов PAD+ v3"}
-        )
-        self._keywords_cache.clear()
-        logger.info("🗑️ RAG Memory v3.0 очищена")
+            import psycopg2
+            
+            db_url = os.getenv('DATABASE_URL')
+            if not db_url:
+                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
+            
+            conn = psycopg2.connect(db_url)
+            cursor = conn.cursor()
+            
+            # Очищаем таблицу rag_dialogs
+            cursor.execute("TRUNCATE TABLE rag_dialogs RESTART IDENTITY")
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+            self._keywords_cache.clear()
+            logger.info("🗑️ RAG Memory v3.0 очищена")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка очистки RAG Memory из PostgreSQL: {e}")
 
 
 # Глобальный экземпляр
 _rag_memory: Optional[RAGMemory] = None
+_rag_init_error: bool = False
 
 
-def get_rag() -> RAGMemory:
-    """Возвращает глобальную RAG память"""
-    global _rag_memory
-    if _rag_memory is None:
-        _rag_memory = RAGMemory()
+def get_rag() -> Optional[RAGMemory]:
+    """Возвращает глобальную RAG память или None если инициализация не удалась"""
+    global _rag_memory, _rag_init_error
+    if _rag_memory is None and not _rag_init_error:
+        try:
+            _rag_memory = RAGMemory()
+        except Exception as e:
+            logger.error(f"❌ Ошибка инициализации RAG: {e}")
+            _rag_init_error = True
+            return None
     return _rag_memory

@@ -93,6 +93,7 @@ else:
     # В development используем uvicorn
     logger.info("⚡ Starting uvicorn for development...")
     logger.info(f"📌 Running uvicorn on 0.0.0.0:{port}")
+    logger.info(f"🔍 Using backend.main:app with port={port} and host=0.0.0.0")
 
     import uvicorn
 

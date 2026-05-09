@@ -25,7 +25,7 @@ scrape_configs:
   # PAD+ AI Backend
   - job_name: 'padplus-backend'
     static_configs:
-      - targets: ['backend:8000']
+      - targets: ['backend:8080']
         labels:
           service: 'padplus-backend'
     metrics_path: '/metrics'

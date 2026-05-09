@@ -15,11 +15,14 @@ API Routes для frontend — Supabase Auth + Ключи + Чат
 
 from fastapi import APIRouter, HTTPException, Depends, Header
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List, Dict, Any, Generic, TypeVar
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any
+from core.input_validation import APIKeyCreate, APIKeyUpdate, UserRegister, UserLogin, ChatRequest
+from typing import Generic, TypeVar
 from datetime import datetime
 import logging
 import uuid
+import traceback
 
 logger = logging.getLogger("padplus")
 import hashlib
@@ -40,16 +43,6 @@ router = APIRouter(prefix="/api/v1", tags=["Frontend API"])
 # МОДЕЛИ ДАННЫХ
 # ============================================================================
 
-class UserRegister(BaseModel):
-    email: str
-    password: str
-    full_name: Optional[str] = None
-
-
-class UserLogin(BaseModel):
-    email: str
-    password: str
-
 
 class UserResponse(BaseModel):
     id: str
@@ -59,19 +52,6 @@ class UserResponse(BaseModel):
     created_at: str
 
 
-class APIKeyCreate(BaseModel):
-    provider: str
-    api_key: str
-    name: Optional[str] = None
-    model_preference: str = "auto"
-    is_default: bool = False
-
-
-class APIKeyUpdate(BaseModel):
-    name: Optional[str] = None
-    model_preference: Optional[str] = None
-    is_default: Optional[bool] = None
-    is_active: Optional[bool] = None
 
 
 class APIKeyResponse(BaseModel):
@@ -113,22 +93,6 @@ class PaginatedResponse(BaseModel, Generic[T]):
     has_more: bool
 
 
-class ChatRequest(BaseModel):
-    message: Optional[str] = None
-    prompt: Optional[str] = None  # Для совместимости
-    model: Optional[str] = "auto"
-    key_id: Optional[str] = None
-    provider: Optional[str] = None  # Явный провайдер от фронтенда
-    stream: bool = False
-    # Автоматическое определение быстрого/медленного режима
-    auto_mode: bool = True  # Если True — система сама определит тип запроса
-    # === COGNITIVE UX LAYER ===
-    explain: bool = False  # Если True — возвращать расширенные когнитивные мета-данные
-
-    @property
-    def text(self) -> str:
-        """Возвращает текст запроса (message или prompt)"""
-        return self.prompt or self.message or ""
 
 
 class ChatResponse(BaseModel):
@@ -434,28 +398,36 @@ async def refresh_token(refresh_token: str = Header(..., alias="X-Refresh-Token"
 
 @router.get("/providers", response_model=List[ProviderResponse])
 async def list_providers():
-    """Список доступных провайдеров"""
+    """Список доступных провайдеров — актуальный каталог LiteLLM"""
     return [
+        {
+            "id": "gigachat",
+            "name": "GigaChat",
+            "description": "Модели GigaChat от Сбера (OAuth)",
+            "free_models": ["gigachat/GigaChat-2-Lite"],
+            "website": "https://gigachat.ru/",
+            "is_premium": False
+        },
         {
             "id": "google",
             "name": "Google AI Studio",
             "description": "Модели Gemini от Google",
-            "free_models": ["gemini-2.0-flash"],
+            "free_models": ["gemini-2.0-flash", "gemini-2.0-flash-lite"],
             "website": "https://aistudio.google.com",
             "is_premium": False
         },
         {
             "id": "groq",
             "name": "Groq",
-            "description": "Быстрые открытые модели (Llama, Mistral)",
-            "free_models": ["llama-3.1-70b-versatile"],
+            "description": "Быстрые открытые модели (Llama, Mistral, Gemma)",
+            "free_models": ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant"],
             "website": "https://console.groq.com",
             "is_premium": False
         },
         {
             "id": "openai",
             "name": "OpenAI",
-            "description": "Модели GPT-4, GPT-3.5",
+            "description": "Модели GPT-4o, GPT-4o-mini, o1, o3-mini",
             "free_models": [],
             "website": "https://platform.openai.com",
             "is_premium": True
@@ -463,13 +435,93 @@ async def list_providers():
         {
             "id": "anthropic",
             "name": "Anthropic",
-            "description": "Модели Claude",
+            "description": "Модели Claude 3.5 Sonnet, Haiku, Opus",
             "free_models": [],
             "website": "https://console.anthropic.com",
             "is_premium": True
-        }
+        },
+        {
+            "id": "openrouter",
+            "name": "OpenRouter",
+            "description": "Единый API для 100+ моделей (Claude, GPT, Llama и др.)",
+            "free_models": [],
+            "website": "https://openrouter.ai",
+            "is_premium": True
+        },
+        {
+            "id": "mistral",
+            "name": "Mistral AI",
+            "description": "Модели Mistral Large, Medium, Small",
+            "free_models": [],
+            "website": "https://console.mistral.ai",
+            "is_premium": True
+        },
+        {
+            "id": "cohere",
+            "name": "Cohere",
+            "description": "Модели Command R+, Command R",
+            "free_models": [],
+            "website": "https://cohere.com",
+            "is_premium": True
+        },
+        {
+            "id": "deepseek",
+            "name": "DeepSeek",
+            "description": "Модели DeepSeek Chat, Coder, Reasoner",
+            "free_models": ["deepseek-chat"],
+            "website": "https://platform.deepseek.com",
+            "is_premium": False
+        },
+        {
+            "id": "xai",
+            "name": "xAI Grok",
+            "description": "Модели Grok-2, Grok-2 Vision",
+            "free_models": [],
+            "website": "https://x.ai",
+            "is_premium": True
+        },
+        {
+            "id": "ollama",
+            "name": "Ollama (Local)",
+            "description": "Локальные модели (Llama, Mistral, CodeLlama)",
+            "free_models": ["llama3.2", "mistral", "codellama"],
+            "website": "https://ollama.ai",
+            "is_premium": False
+        },
+        {
+            "id": "azure",
+            "name": "Azure OpenAI",
+            "description": "Модели GPT-4, GPT-3.5 через Azure",
+            "free_models": [],
+            "website": "https://azure.microsoft.com",
+            "is_premium": True
+        },
+        {
+            "id": "together",
+            "name": "Together AI",
+            "description": "Открытые модели (Llama 3, Mixtral)",
+            "free_models": [],
+            "website": "https://together.ai",
+            "is_premium": True
+        },
+        {
+            "id": "fireworks",
+            "name": "Fireworks",
+            "description": "Быстрые открытые модели",
+            "free_models": [],
+            "website": "https://fireworks.ai",
+            "is_premium": True
+        },
+        {
+            "id": "nvidia",
+            "name": "NVIDIA NIM",
+            "description": "Модели через NVIDIA Inference Microservices",
+            "free_models": [],
+            "website": "https://nvidia.com/nim",
+            "is_premium": True
+        },
     ]
-
+        
 
 # ============================================================================
 # API KEY MANAGEMENT ENDPOINTS
@@ -489,49 +541,88 @@ async def list_keys(
         limit: Количество результатов (1-100, по умолчанию 50)
     """
     supabase = get_supabase()
-    user_id = current_user["id"]
+    if not supabase:
+        raise HTTPException(status_code=500, detail="БД не подключена")
+    
+    user_id = str(current_user["id"])  # Преобразуем UUID в строку
     
     # Ограничиваем limit
     limit = min(max(limit, 1), 100)
 
-    # Получаем общее количество
-    count_result = supabase.table("user_api_keys")\
-        .select("*", count="exact")\
-        .eq("user_id", user_id)\
-        .execute()
-    
-    total = count_result.count
-    
-    # Получаем данные с пагинацией
-    result = supabase.table("user_api_keys")\
-        .select("*")\
-        .eq("user_id", user_id)\
-        .order("created_at", desc=True)\
-        .range(offset, offset + limit - 1)\
-        .execute()
+    try:
+        # Получаем общее количество
+        count_result = supabase.table("user_api_keys")\
+            .select("*", count="exact")\
+            .eq("user_id", user_id)\
+            .execute()
+        
+        total = count_result.count if hasattr(count_result, 'count') else 0
+        
+        # Получаем данные с пагинацией
+        result = supabase.table("user_api_keys")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .order("created_at", desc=True)\
+            .range(offset, offset + limit - 1)\
+            .execute()
 
-    keys = []
-    for key in result.data:
-        keys.append(APIKeyResponse(
-            id=key["id"],
-            provider=key["provider"],
-            provider_display_name=get_provider_display_name(key["provider"]),
-            name=key.get("name"),
-            model_preference=key.get("model_preference", "auto"),
-            is_default=key.get("is_default", False),
-            is_active=key.get("is_active", True),
-            created_at=key["created_at"],
-            last_used_at=key.get("last_used_at"),
-            has_key=True
-        ))
-    
-    return PaginatedResponse(
-        data=keys,
-        total=total,
-        offset=offset,
-        limit=limit,
-        has_more=offset + limit < total
-    )
+        # Защита от None
+        if not hasattr(result, 'data') or result.data is None:
+            logger.warning(f"⚠️ Пустой ответ от Supabase для user_id={user_id}. Проверьте RLS политики или существование таблицы.")
+            return PaginatedResponse(
+                data=[],
+                total=0,
+                offset=offset,
+                limit=limit,
+                has_more=False
+            )
+
+        keys = []
+        for key in result.data:
+            keys.append(APIKeyResponse(
+                id=key["id"],
+                provider=key["provider"],
+                provider_display_name=get_provider_display_name(key["provider"]),
+                name=key.get("name"),
+                model_preference=key.get("model_preference", "auto"),
+                is_default=key.get("is_default", False),
+                is_active=key.get("is_active", True),
+                created_at=key["created_at"],
+                last_used_at=key.get("last_used_at"),
+                has_key=True
+            ))
+        
+        return PaginatedResponse(
+            data=keys,
+            total=total,
+            offset=offset,
+            limit=limit,
+            has_more=offset + limit < total
+        )
+        
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"❌ Ошибка получения списка ключей: {error_msg}")
+        logger.error(f"🔍 Stack trace: {traceback.format_exc()}")
+        
+        # Обработка конкретных ошибок Supabase
+        error_lower = error_msg.lower()
+        if "table" in error_lower and ("not found" in error_lower or "does not exist" in error_lower or "42p01" in error_lower):
+            raise HTTPException(status_code=404, detail="Таблица user_api_keys не найдена. Проверьте миграции базы данных.")
+        elif "permission" in error_lower or "rls" in error_lower or "42501" in error_lower:
+            raise HTTPException(status_code=403, detail="Доступ к таблице user_api_keys запрещён. Проверьте RLS политики.")
+        elif "connection" in error_lower or "closed" in error_lower or "network" in error_lower:
+            # Возвращаем пустой список при проблемах с соединением
+            logger.warning(f"⚠️ БД недоступна для /keys, возвращаем пустой список")
+            return PaginatedResponse(
+                data=[],
+                total=0,
+                offset=offset,
+                limit=limit,
+                has_more=False
+            )
+        else:
+            raise HTTPException(status_code=500, detail=f"Ошибка БД: {error_msg[:100]}")
 
 
 @router.post("/keys", response_model=APIKeyResponse)
@@ -542,7 +633,7 @@ async def create_key(
     """Добавление API ключа"""
     supabase = get_supabase()
     encryptor = get_encryptor()
-    user_id = current_user["id"]
+    user_id = str(current_user["id"])  # Преобразуем UUID в строку
 
     logger.info(f"🔑 Creating key: provider={data.provider}, model={data.model_preference}, is_default={data.is_default}")
     logger.info(f"🔑 Raw API key length: {len(data.api_key)}, starts with: {data.api_key[:20]}...")
@@ -603,14 +694,14 @@ async def delete_key(
 ):
     """Удаление API ключа"""
     supabase = get_supabase()
-    user_id = current_user["id"]
+    user_id = str(current_user["id"])  # Преобразуем UUID в строку
     
     result = supabase.table("user_api_keys")\
         .delete()\
         .eq("id", key_id)\
         .eq("user_id", user_id)\
         .execute()
-    
+
     if not result.data:
         raise HTTPException(status_code=404, detail="Ключ не найден")
     
@@ -624,7 +715,7 @@ async def set_default_key(
 ):
     """Установка ключа по умолчанию"""
     supabase = get_supabase()
-    user_id = current_user["id"]
+    user_id = str(current_user["id"])  # Преобразуем UUID в строку
     
     # Сначала сбрасываем все ключи пользователя
     supabase.table("user_api_keys")\
@@ -760,26 +851,59 @@ async def test_key_direct(data: TestKeyRequest):
 # CHAT ENDPOINTS
 # ============================================================================
 
+class ChatRequestSimple(BaseModel):
+    """Упрощённый формат чата (для совместимости)"""
+    message: str
+    key_id: Optional[str] = None
+    provider: Optional[str] = "gigachat"
+    model: Optional[str] = "auto"
+    auto_mode: bool = False
+
+from fastapi import Body
+
+def _get_text(req) -> str:
+    """Получает текст из ChatRequest"""
+    if hasattr(req, 'text'):
+        return req.text
+    return ""
+
+def _get_chat_text(request) -> str:
+    """Получает текст из ChatRequest"""
+    return _get_text(request)
+
+# Простой чат endpoint (поддержка legacy формата)
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
-    request: ChatRequest,
+    body_data: dict = Body({}),
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Чат с AI с автоматическим определением быстрого/медленного режима
-
-    Быстрые запросы (< 10 слов, простые паттерны):
-    - Приветствия, благодарности
-    - Короткие вопросы
-    - Ответы за 1-2 секунды
-    
-    Медленные запросы (сложные вопросы, анализ):
-    - Требуют проверки фактов (TruthLoop)
-    - Используют память (RAG)
-    - Ответы за 3-7 секунд
-    
-    Использует ключ пользователя из БД
+    Поддержка любого формата:
+    - Новый: {"messages": [...], "model": "..."}
+    - Простой: {"message": "...", "provider": "..."}
     """
+    message = body_data.get("message")
+    messages = body_data.get("messages")
+    
+    # Преобразуем простой формат в полный
+    if message and not messages:
+        from core.input_validation import ChatMessage, ChatRequest as ChatRequestFull
+        messages = [ChatMessage(content=message, role="user")]
+        body_data["messages"] = messages
+    elif messages and message:
+        # Если оба - используем messages
+        pass
+    elif not message and not messages:
+        raise HTTPException(status_code=400, detail="message or messages required")
+    
+    # Создаём ChatRequest
+    from core.input_validation import ChatRequest as ChatRequestFull
+    request = ChatRequestFull(**body_data)
+    
+    if not request or not request.messages:
+        raise HTTPException(status_code=400, detail="message or messages required")
+    
+    # === ЛОГИКА ЧАТА ===
     from runtime.litellm_service import get_litellm_service
     from core.pipeline import get_pipeline
 
@@ -787,16 +911,11 @@ async def chat(
     encryptor = get_encryptor()
     user_id = current_user["id"]
 
-    # Определяем какой ключ использовать
     api_key = None
     model = "auto"
     provider = None
 
-    logger.info(f"🔍 Chat request: key_id={request.key_id}, model={request.model}, provider={request.provider}")
-
     if request.key_id:
-        # Конкретный ключ
-        logger.info(f"🔑 Looking up key_id: {request.key_id}")
         result = supabase.table("user_api_keys")\
             .select("*")\
             .eq("id", request.key_id)\
@@ -805,14 +924,35 @@ async def chat(
 
         if result.data:
             key_data = result.data[0]
+            api_key = encryptor.decrypt(key_data["api_key_encrypted"])
+            provider = key_data["provider"]
+            model = key_data.get("model_preference") or "auto"
+
+        if result.data:
+            key_data = result.data[0]
             logger.info(f"✅ Key found: provider={key_data['provider']}, model={key_data.get('model_preference')}, is_default={key_data.get('is_default')}")
             api_key = encryptor.decrypt(key_data["api_key_encrypted"])
-            provider = key_data["provider"]  # ВСЕГДА из БД, не от фронтенда
-            model = key_data.get("model_preference") or "auto"
-        else:
-            logger.warning(f"⚠️ Key {request.key_id} not found for user {user_id}, falling back to default")
+            provider = key_data["provider"]
+            model = key_data.get("model_preference")
     else:
         logger.info("⚠️ No key_id provided, using default key")
+
+    # Дефолтные модели для каждого провайдера
+    DEFAULT_MODELS = {
+        "gigachat": "GigaChat-2-Lite",
+        "openai": "gpt-4o-mini",
+        "google": "gemini-2.0-flash",
+        "anthropic": "claude-3-5-haiku-20241022",
+        "cohere": "command-r",
+        "groq": "llama-3.1-70b-versatile",
+        "deepseek": "deepseek-chat",
+        "ollama": "llama3.2",
+        "openrouter": "",  # Используем модель из БД
+    }
+    
+    # Если модель пустая или "auto" - используем дефолтную
+    if not model or model == "auto":
+        model = DEFAULT_MODELS.get(provider, "") or ""
 
     if not api_key:
         # Ключ по умолчанию
@@ -827,8 +967,10 @@ async def chat(
             key_data = result.data[0]
             logger.info(f"✅ Default key found: provider={key_data['provider']}, model={key_data.get('model_preference')}")
             api_key = encryptor.decrypt(key_data["api_key_encrypted"])
-            provider = key_data["provider"]  # ВСЕГДА из БД
-            model = key_data.get("model_preference") or "auto"
+            provider = key_data["provider"]
+            model = key_data.get("model_preference")
+            if not model or model == "auto":
+                model = DEFAULT_MODELS.get(provider, "") or ""
 
     if not api_key:
         # Нет ключа у пользователя — ошибка!
@@ -867,7 +1009,7 @@ async def chat(
             # ⚡ БЫСТРЫЙ РЕЖИМ (1-2 секунды)
             litellm = get_litellm_service()
             response = await litellm.generate(
-                prompt=request.text,
+                prompt=_get_text,
                 system_prompt="Вы полезный ассистент PAD+ AI. Отвечайте кратко.",
                 api_key=api_key,
                 model=model,
@@ -893,20 +1035,24 @@ async def chat(
         else:
             # 🐌 МЕДЛЕННЫЙ РЕЖИМ (3-7 секунд, полный Pipeline)
             # === ФАЗА 1: ПЕРЕДАЁМ API КЛЮЧ В PIPELINE ===
+            # Получаем текст из messages
+            user_message = request.messages[0].content if request.messages else ""
+            
             try:
                 pipeline = get_pipeline()
                 result = await pipeline.execute(
-                    user_message=request.text,
+                    user_message=user_message,
                     context={"user_id": user_id, "key_id": request.key_id},
-                    api_key=api_key,        # === ФАЗА 1: Передаём ключ ===
-                    provider=provider       # === ФАЗА 1: Передаём провайдера ===
+                    api_key=api_key,
+                    provider=provider,
+                    model=model  # === передаём модель ===
                 )
             except Exception as pipeline_error:
                 logger.error(f"❌ Pipeline execution failed: {pipeline_error}")
                 # Fallback: если пайплайн упал - используем быстрый режим напрямую
                 litellm = get_litellm_service()
                 response = await litellm.generate(
-                    prompt=request.text,
+                    prompt=_get_text,
                     system_prompt="Вы полезный ассистент PAD+ AI.",
                     api_key=api_key,
                     model=model,
@@ -940,38 +1086,41 @@ async def chat(
             # === СОХРАНЕНИЕ ДИАЛОГА И СООБЩЕНИЙ ===
             dialog_id = None
             
-            if not dialog_id:
-                # Создаем новый диалог
-                dialog_result = supabase.table("dialogs").insert({
-                    "user_id": user_id,
-                    "title": request.text[:100],
-                    "message_count": 2,
-                    "last_message_at": datetime.now().isoformat()
-                }).execute()
-                
-                if dialog_result.data:
-                    dialog_id = dialog_result.data[0]["id"]
-            
-            if dialog_id:
-                # Сохраняем сообщение пользователя
-                supabase.table("messages").insert({
-                    "dialog_id": dialog_id,
-                    "role": "user",
-                    "content": request.text,
-                    "model": model,
-                    "provider": provider,
-                    "created_at": datetime.now().isoformat()
-                }).execute()
-                
-                # Сохраняем ответ ИИ
-                supabase.table("messages").insert({
-                    "dialog_id": dialog_id,
-                    "role": "assistant",
-                    "content": result.response,
-                    "model": model,
-                    "provider": provider,
-                    "created_at": datetime.now().isoformat()
-                }).execute()
+            try:
+                if not dialog_id:
+                    # Создаем новый диалог
+                    dialog_result = supabase.table("dialogs").insert({
+                        "user_id": user_id,
+                        "title": _get_text[:100],
+                        "message_count": 2,
+                        "last_message_at": datetime.now().isoformat()
+                    }).execute()
+
+                    if dialog_result.data:
+                        dialog_id = dialog_result.data[0]["id"]
+
+                if dialog_id:
+                    # Сохраняем сообщение пользователя
+                    supabase.table("messages").insert({
+                        "dialog_id": dialog_id,
+                        "role": "user",
+                        "content": _get_text,
+                        "model": model,
+                        "provider": provider,
+                        "created_at": datetime.now().isoformat()
+                    }).execute()
+
+                    # Сохраняем ответ ИИ
+                    supabase.table("messages").insert({
+                        "dialog_id": dialog_id,
+                        "role": "assistant",
+                        "content": result.response,
+                        "model": model,
+                        "provider": provider,
+                        "created_at": datetime.now().isoformat()
+                    }).execute()
+            except Exception as save_error:
+                logger.warning(f"⚠️ Не удалось сохранить диалог: {save_error}")
             
             # === COGNITIVE UX LAYER: Преобразуем результат в полный формат ===
             # Временная фикс: пока pipeline не возвращает полный объект
@@ -1059,7 +1208,10 @@ async def get_mind_state():
     try:
         from memory.rag import get_rag
         rag = get_rag()
-        state["memory"]["rag"] = rag.get_stats()
+        if rag is not None:
+            state["memory"]["rag"] = rag.get_stats()
+        else:
+            state["memory"]["rag"] = {"total_dialogs": 0, "status": "unavailable"}
     except Exception as e:
         logger.warning(f"RAG stats error: {type(e).__name__}: {e}")
         state["memory"]["rag"] = {"total_dialogs": 0}
@@ -1086,16 +1238,8 @@ async def get_mind_state():
         logger.warning(f"Semantic stats error: {type(e).__name__}: {e}")
         state["memory"]["semantic"] = {"total_knowledge": 0}
     
-    try:
-        from memory.fact_memory_chroma import get_fact_memory_chroma
-        facts = get_fact_memory_chroma()
-        fact_stats = facts.get_stats()
-        state["memory"]["fact"] = {
-            "total_facts": fact_stats.get("total_facts", 0)
-        }
-    except Exception as e:
-        logger.warning(f"Fact memory stats error: {type(e).__name__}: {e}")
-        state["memory"]["fact"] = {"total_facts": 0}
+    # Факты теперь интегрированы в RAG, статистика не требуется
+    state["memory"]["fact"] = {"total_facts": 0}
     
     try:
         from memory.roots import get_roots_memory
@@ -1299,20 +1443,11 @@ async def get_full_system_status():
             "connections": random.randint(1000, 5000)
         }
     
-    try:
-        from memory.fact_memory_chroma import get_fact_memory_chroma
-        facts = get_fact_memory_chroma()
-        fact_stats = facts.get_stats()
-        status["memory"]["facts"] = {
-            "total_facts": fact_stats.get("total_facts", random.randint(500, 3000)),
-            "verified_facts": fact_stats.get("verified_facts", random.randint(400, 2500)),
-            "verification_rate": round(random.uniform(0.8, 0.95), 2)
-        }
-    except Exception:
-        status["memory"]["facts"] = {
-            "total_facts": random.randint(500, 3000),
-            "verification_rate": round(random.uniform(0.8, 0.95), 2)
-        }
+    # Факты теперь интегрированы в RAG
+    status["memory"]["facts"] = {
+        "total_facts": 0,
+        "verification_rate": 0.0
+    }
     
     try:
         from memory.persona import get_persona
@@ -1498,7 +1633,7 @@ async def chat_stream(
             litellm = get_litellm_service()
 
             async for chunk in litellm.generate_stream(
-                prompt=request.text,
+                prompt=_get_text,
                 system_prompt="Вы полезный ассистент PAD+ AI.",
                 api_key=api_key,
                 model=model,
@@ -1564,7 +1699,7 @@ async def list_provider_models(provider_id: str, current_user: dict = Depends(ge
     from core.encryption import get_encryptor
 
     supabase = get_supabase()
-    user_id = current_user["id"]
+    user_id = str(current_user["id"])  # Преобразуем UUID в строку
     encryptor = get_encryptor()
 
     # Получаем API ключ пользователя для этого провайдера

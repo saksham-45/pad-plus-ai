@@ -31,6 +31,13 @@ from litellm.utils import get_model_info
 
 logger = logging.getLogger("padplus.litellm")
 
+# SSL verification - пытаемся использовать certifi
+try:
+    import certifi
+    SSL_CERT = certifi.where()
+except ImportError:
+    SSL_CERT = True  # Системные CA
+
 
 class CircuitBreakerOpenError(Exception):
     """Исключение, когда Circuit Breaker открыт"""
@@ -273,16 +280,32 @@ class LiteLLMService:
         Returns:
             Полное имя: provider/model
         """
+        DEFAULT_MODELS = {
+            "gigachat": "GigaChat-2-Lite",
+            "openai": "gpt-4o-mini",
+            "google": "gemini-2.0-flash",
+            "anthropic": "claude-3-5-haiku-20241022",
+            "cohere": "command-r",
+            "groq": "llama-3.1-70b-versatile",
+            "deepseek": "deepseek-chat",
+            "ollama": "llama3.2",
+            "openrouter": "gpt-4o-mini",
+        }
+        
         # Защита от None модели
-        if model is None:
-            model = ""
+        if model is None or model == "" or model == provider or model == "auto":
+            model = DEFAULT_MODELS.get(provider, "gpt-4o-mini")
+        
+        # Если модель равна just provider name - это тоже ошибка
+        if not model or model in ("", provider, "auto", None):
+            model = DEFAULT_MODELS.get(provider, "gpt-4o-mini")
         
         # Если модель уже содержит префикс провайдера
         if "/" in model:
             return model
         
         # Добавляем префикс провайдера
-        return f"{provider}/{model}" if model else provider
+        return f"{provider}/{model}"
     
     def _detect_provider(self, model: str) -> str:
         """
@@ -554,12 +577,31 @@ class LiteLLMService:
                 },
                 data={"scope": "GIGACHAT_API_PERS"},
                 timeout=10,
-                verify=False
+                verify=False  # GigaChat использует свой CA
             )
 
         token_resp = await asyncio.to_thread(_get_token)
         if token_resp.status_code != 200:
-            raise ValueError(f"GigaChat auth failed: {token_resp.status_code} {token_resp.text}")
+            # Fallback: пробуем без верификации если certifi не работает
+            logger.warning("GigaChat auth failed, trying with verify=False  # GigaChat использует свой CA")
+            import requests as _req
+            import uuid as _uuid
+            def _get_token_fallback():
+                return _req.post(
+                    "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Accept": "application/json",
+                        "RqUID": str(_uuid.uuid4()),
+                        "Authorization": f"Basic {api_key}",
+                    },
+                    data={"scope": "GIGACHAT_API_PERS"},
+                    timeout=10,
+                    verify=False  # GigaChat использует свой CA  # Системные CA
+                )
+            token_resp = await asyncio.to_thread(_get_token_fallback)
+            if token_resp.status_code != 200:
+                raise ValueError(f"GigaChat auth failed: {token_resp.status_code} {token_resp.text}")
 
         access_token = token_resp.json()["access_token"]
 
@@ -579,7 +621,7 @@ class LiteLLMService:
                     "Content-Type": "application/json",
                 },
                 timeout=60,
-                verify=False
+                verify=False  # GigaChat использует свой CA
             )
 
         messages = []
@@ -655,7 +697,7 @@ class LiteLLMService:
                 },
                 data={"scope": "GIGACHAT_API_PERS"},
                 timeout=10,
-                verify=False
+                verify=False  # GigaChat использует свой CA
             )
 
         token_resp = await asyncio.to_thread(_get_token)
@@ -684,7 +726,7 @@ class LiteLLMService:
                     "Content-Type": "application/json",
                 },
                 timeout=60,
-                verify=False
+                verify=False  # GigaChat использует свой CA
             )
 
         chat_resp = await asyncio.to_thread(_send_chat)

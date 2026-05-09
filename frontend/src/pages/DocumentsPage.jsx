@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useNotifications } from '../hooks/useNotifications';
+import { apiFetch } from '../services/api';
 
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState([]);
@@ -33,17 +34,12 @@ export default function DocumentsPage() {
   const notifySuccess = (message) => console.log('✅', message);
   const notifyError = (message) => console.error('❌', message);
 
-  const getToken = () => localStorage.getItem('access_token');
-
   const fetchData = useCallback(async () => {
-    const token = getToken();
-    if (!token) return;
-
     try {
       const [docsRes, collsRes, statsRes] = await Promise.all([
-        fetch('/api/v1/documents', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/collections', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/documents/stats', { headers: { Authorization: `Bearer ${token}` } }),
+        apiFetch('/api/v1/documents'),
+        apiFetch('/api/v1/collections'),
+        apiFetch('/api/v1/documents/stats'),
       ]);
 
       if (docsRes.ok) {
@@ -74,11 +70,8 @@ export default function DocumentsPage() {
       setSearchResults([]);
       return;
     }
-    const token = getToken();
     try {
-      const res = await fetch(`/api/v1/documents/search?q=${encodeURIComponent(searchQuery)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await apiFetch(`/api/v1/documents/search?q=${encodeURIComponent(searchQuery)}`);
       if (res.ok) {
         const data = await res.json();
         setSearchResults(data.results || []);
@@ -91,14 +84,10 @@ export default function DocumentsPage() {
   const handleCreateCollection = async () => {
     if (!newCollectionName.trim()) return;
     
-    const token = getToken();
     try {
-      const res = await fetch('/api/v1/collections', {
+      const res = await apiFetch('/api/v1/collections', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newCollectionName,
           description: newCollectionDesc
@@ -124,7 +113,6 @@ export default function DocumentsPage() {
     if (!file) return;
 
     setUploading(true);
-    const token = getToken();
     const formData = new FormData();
     formData.append('file', file);
     if (uploadCollectionId && uploadCollectionId !== 'null') {
@@ -132,11 +120,8 @@ export default function DocumentsPage() {
     }
 
     try {
-      const res = await fetch('/api/v1/documents/upload', {
+      const res = await apiFetch('/api/v1/documents/upload', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
         body: formData,
       });
       if (res.ok) {
@@ -158,15 +143,11 @@ export default function DocumentsPage() {
   const handleUrlUpload = async () => {
     if (!url.trim()) return;
     setUploading(true);
-    const token = getToken();
 
     try {
-      const res = await fetch('/api/v1/documents/from-url', {
+      const res = await apiFetch('/api/v1/documents/from-url', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
       if (res.ok) {
@@ -187,11 +168,9 @@ export default function DocumentsPage() {
 
   const handleDelete = async (id) => {
     if (!confirm('Удалить документ?')) return;
-    const token = getToken();
     try {
-      const res = await fetch(`/api/v1/documents/${id}`, {
+      const res = await apiFetch(`/api/v1/documents/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         notifySuccess('Документ удалён');
@@ -204,14 +183,12 @@ export default function DocumentsPage() {
   };
 
   const handleMoveToCollection = async (documentId, collectionId) => {
-    const token = getToken();
     try {
       const formData = new FormData();
       formData.append('collection_id', collectionId);
       
-      const res = await fetch(`/api/v1/documents/${documentId}`, {
+      const res = await apiFetch(`/api/v1/documents/${documentId}`, {
         method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
       

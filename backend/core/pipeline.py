@@ -391,7 +391,8 @@ class PipelineExecutor:
         context: Dict = None,
         session_id: str = None,
         api_key: Optional[str] = None,      # === ФАЗА 1: API ключ пользователя ===
-        provider: Optional[str] = None      # === ФАЗА 1: Провайдер пользователя ===
+        provider: Optional[str] = None,     # === ФАЗА 1: Провайдер пользователя ===
+        model: Optional[str] = None       # === ФАЗА 1: Модель пользователя ===
     ) -> PipelineResult:
         """
         Выполняет полный пайплайн обработки
@@ -541,65 +542,13 @@ class PipelineExecutor:
             notify_user=False
         )
 
-        # Facts
-        async def facts_step():
-            from memory.fact_memory_chroma import get_fact_memory_chroma
-            facts = get_fact_memory_chroma()
-            context_data = facts.search(user_message, min_confidence=0.3, limit=3)
-            result.facts_used = len(context_data)
-            
-            if context_data:
-                result.sources["facts"]["count"] = len(context_data)
-            
-            return context_data
+        # Факты теперь интегрированы в RAG
+        facts_context = []
 
-        facts_context = await error_handler.try_execute(
-            component="facts_memory",
-            func=facts_step,
-            fallback_value=[],
-            severity=ErrorSeverity.LOW,
-            notify_user=False
-        )
+        # Долговременная память теперь интегрирована в RAG
+        vector_context = []
 
-        # === ЭТАП 6: Интеграция VectorMemoryChroma (долговременная память) ===
-        async def vector_memory_step():
-            from memory.vector_memory_chroma import get_vector_memory_chroma
-            vector_mem = get_vector_memory_chroma()
-            vector_context = vector_mem.search(user_message, min_confidence=0.3, limit=3)
-            if vector_context:
-                result.metadata["vector_memory_used"] = True
-                result.metadata["vector_records"] = len(vector_context)
-            return vector_context
-
-        vector_context = await error_handler.try_execute(
-            component="vector_memory",
-            func=vector_memory_step,
-            fallback_value=[],
-            severity=ErrorSeverity.LOW,
-            notify_user=False
-        )
-
-        # === ЭТАП 7: Интеграция SmartCacheChroma (кратковременная память) ===
-        async def smartcache_step():
-            from memory.smartcache_chroma import get_smartcache_chroma
-            smartcache = get_smartcache_chroma()
-            
-            # Проверяем отрицательный кэш
-            if smartcache.is_negative(user_message):
-                result.metadata["smartcache_negative"] = True
-            else:
-                # Ищем в кэше
-                cache_results = smartcache.search(user_message, limit=3)
-                if cache_results:
-                    result.metadata["smartcache_used"] = True
-                    result.metadata["smartcache_records"] = len(cache_results)
-
-        await error_handler.try_execute(
-            component="smartcache",
-            func=smartcache_step,
-            severity=ErrorSeverity.LOW,
-            notify_user=False
-        )
+        # Кратковременный кэш теперь интегрирован в RAG
         
         # Knowledge Graph
         async def knowledge_graph_step():
@@ -774,12 +723,12 @@ class PipelineExecutor:
             # === 7.2 GENERATE RESPONSE через LiteLLM ===
             # === ФАЗА 1: ИСПОЛЬЗУЕМ API КЛЮЧ ПОЛЬЗОВАТЕЛЯ ===
             
-            # Проверяем, передан ли ключ напрямую в Pipeline
+# Проверяем, передан ли ключ напрямую в Pipeline
             user_api_key = api_key  # Из параметра метода execute()
             user_provider = provider  # Из параметра метода execute()
-            model = None
-
-            logger.info(f"🔑 Pipeline: api_key_len={len(user_api_key) if user_api_key else 0}, provider={user_provider}, model={model}")
+            user_model = model  # Из параметра метода execute()
+            
+            logger.info(f"🔑 Pipeline: api_key_len={len(user_api_key) if user_api_key else 0}, provider={user_provider}, model={user_model}")
 
             # Если ключ не передан, пытаемся получить из сессии
             if not user_api_key and session_id:
@@ -791,7 +740,7 @@ class PipelineExecutor:
                     if user_manager.litellm_service:
                         # Используем ключ пользователя из сессии
                         user_api_key = user_manager.litellm_service.default_api_key
-                        model = user_manager.litellm_service.default_model
+                        user_model = user_model or user_manager.litellm_service.default_model
                         # provider определяем из ключа (будет добавлен позже)
                 except Exception as e:
                     logger.warning(f"Ошибка получения ключа сессии: {e}")
@@ -809,7 +758,7 @@ class PipelineExecutor:
                     prompt=user_message,
                     system_prompt=full_context,
                     api_key=user_api_key,
-                    model=model,
+                    model=user_model,
                     provider=user_provider  # Передаём провайдера явно
                 )
 

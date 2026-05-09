@@ -1,13 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from './ui/Card';
 import { Button } from './ui/Button';
+import { apiFetch } from '../services/api';
 
-const modelSuggestions = {
-  google: ['gemini-2.0-flash', 'gemini-1.5-pro'],
-  groq: ['llama-3.1-70b-versatile', 'mixtral-8x7b-32768'],
-  openai: ['gpt-4', 'gpt-3.5-turbo'],
-  anthropic: ['claude-3-sonnet', 'claude-3-haiku'],
-  openrouter: ['openai/gpt-3.5-turbo', 'google/gemini-2.0-flash'],
+// Fallback модели по провайдерам (если API недоступен)
+const fallbackModelSuggestions = {
+  gigachat: ['GigaChat-2-Lite', 'GigaChat-2-Pro'],
+  google: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro'],
+  groq: ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1', 'o3-mini'],
+  anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
+  openrouter: ['openrouter/auto', 'openai/gpt-4o', 'anthropic/claude-3-5-sonnet'],
+  mistral: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest'],
+  cohere: ['command-r-plus', 'command-r'],
+  deepseek: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'],
+  xai: ['grok-2', 'grok-2-vision'],
+  ollama: ['llama3.2', 'mistral', 'codellama'],
+  azure: ['gpt-4o', 'gpt-4', 'gpt-35-turbo'],
+  together: ['meta-llama/Llama-3-70b', 'mistralai/Mixtral-8x7B'],
+  fireworks: ['accounts/fireworks/models/llama-v3-70b-instruct'],
+  nvidia: ['meta/llama3-70b-instruct', 'mistralai/mistral-large'],
 };
 
 export function ApiKeyForm({ provider, onSuccess, onCancel }) {
@@ -17,6 +29,37 @@ export function ApiKeyForm({ provider, onSuccess, onCancel }) {
   const [isDefault, setIsDefault] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [availableModels, setAvailableModels] = useState([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
+  // Загрузка моделей провайдера при монтировании
+  useEffect(() => {
+    if (provider?.id) {
+      loadModels(provider.id);
+    }
+  }, [provider?.id]);
+
+  const loadModels = async (providerId) => {
+    setModelsLoading(true);
+    try {
+      const response = await apiFetch(`/api/v1/providers/${providerId}/models`);
+      if (response.ok) {
+        const data = await response.json();
+        const models = data.models || [];
+        setAvailableModels(models);
+      } else {
+        // Fallback на статические модели
+        const fallback = fallbackModelSuggestions[providerId] || [];
+        setAvailableModels(fallback.map(m => ({ id: `${providerId}/${m}`, name: m })));
+      }
+    } catch (error) {
+      console.error('Failed to load models:', error);
+      const fallback = fallbackModelSuggestions[providerId] || [];
+      setAvailableModels(fallback.map(m => ({ id: `${providerId}/${m}`, name: m })));
+    } finally {
+      setModelsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -24,13 +67,8 @@ export function ApiKeyForm({ provider, onSuccess, onCancel }) {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/v1/keys', {
+      const response = await apiFetch('/api/v1/keys', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           provider: provider.id,
           api_key: apiKey,
@@ -106,17 +144,19 @@ export function ApiKeyForm({ provider, onSuccess, onCancel }) {
           <div>
             <label className="block text-sm text-text-secondary mb-1">
               Модель по умолчанию
+              {modelsLoading && <span className="ml-2 text-xs text-text-muted">(загрузка...)</span>}
             </label>
             <select
               value={modelPreference}
               onChange={(e) => setModelPreference(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
+              disabled={modelsLoading}
+              className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
             >
               <option value="auto">Автоматически</option>
-              {modelSuggestions[provider?.id]?.map((model) => (
-                <option key={model} value={model}>{model}</option>
+              {availableModels.map((model) => (
+                <option key={model.id} value={model.id}>{model.name}</option>
               ))}
-              <option value="custom">Другая...</option>
+              <option value="custom">Другая (вручную)...</option>
             </select>
           </div>
 
@@ -129,7 +169,7 @@ export function ApiKeyForm({ provider, onSuccess, onCancel }) {
                 type="text"
                 onChange={(e) => setModelPreference(e.target.value)}
                 className="w-full px-3 py-2 bg-gray-800 border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
-                placeholder="model-name"
+                placeholder="provider/model-name"
               />
             </div>
           )}

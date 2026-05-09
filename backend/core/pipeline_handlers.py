@@ -153,7 +153,7 @@ class RAGHandler(PipelineHandler):
     
     async def process(self, context: Dict[str, Any]) -> HandlerResult:
         try:
-            from memory.rag import get_rag
+            from memory.rag_postgres import get_rag
             
             rag = get_rag()
             user_id = context.get("user_id")
@@ -179,37 +179,6 @@ class RAGHandler(PipelineHandler):
                 metadata={"rag_error": str(e), "rag_used": False}
             )
 
-
-class FactsHandler(PipelineHandler):
-    """
-    📝 Обработчик поиска фактов
-    
-    Ищет факты в FactMemory.
-    """
-    
-    async def process(self, context: Dict[str, Any]) -> HandlerResult:
-        try:
-            from memory.fact_memory_chroma import get_fact_memory_chroma
-            
-            facts = get_fact_memory_chroma()
-            facts_context = facts.search(context["user_message"], min_confidence=0.3, limit=3)
-            
-            return HandlerResult(
-                success=True,
-                data={"facts": [f.to_dict() for f in facts_context]},
-                metadata={
-                    "facts_used": len(facts_context),
-                    "fact_memory_used": True
-                }
-            )
-            
-        except Exception as e:
-            self.logger.error(f"FactsHandler error: {type(e).__name__}: {e}")
-            return HandlerResult(
-                success=True,
-                data={"facts": []},
-                metadata={"facts_error": str(e), "facts_used": 0}
-            )
 
 
 class EpisodicHandler(PipelineHandler):

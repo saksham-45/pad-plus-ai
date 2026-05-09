@@ -7,6 +7,7 @@ import { KnowledgeWidget } from './widgets/KnowledgeWidget';
 import { MetricsWidget } from './widgets/MetricsWidget';
 import { XRayPipeline } from './xray/XRayPipeline';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { apiFetch } from '../services/api';
 
 export function RightSidebar({ isOpen, onToggle, width, onWidthChange }) {
   const sidebarRef = useRef(null);
@@ -42,8 +43,8 @@ export function RightSidebar({ isOpen, onToggle, width, onWidthChange }) {
   const fetchMetrics = useCallback(async () => {
     try {
       const [activityRes, systemRes] = await Promise.all([
-        fetch('/api/v1/metrics/activity'),
-        fetch('/api/v1/metrics/system'),
+        apiFetch('/api/v1/metrics/activity'),
+        apiFetch('/api/v1/metrics/system'),
       ]);
 
       if (activityRes.ok) {
@@ -68,9 +69,9 @@ export function RightSidebar({ isOpen, onToggle, width, onWidthChange }) {
   }, []);
 
   // Загрузка состояния системы
-  const fetchMindState = useCallback(async () => {
-    try {
-      const res = await fetch('/api/v1/mind-state');
+    const fetchMindState = useCallback(async () => {
+      try {
+        const res = await apiFetch('/api/v1/mind-state');
       if (res.ok) {
         const data = await res.json();
         if (data.emotion) setEmotion(data.emotion);

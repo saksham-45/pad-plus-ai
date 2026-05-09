@@ -205,12 +205,11 @@ async def upload_avatar(
         file_extension = file.filename.split(".")[-1]
         file_path = f"avatars/{user_id}.{file_extension}"
         
-        supabase.storage.from_bucket("avatars")\
+        supabase.storage.from_("avatars")\
             .upload(file_path, content, {"content-type": file.content_type})
         
         # Получаем публичную ссылку
-        avatar_url = supabase.storage.from_bucket("avatars")\
-            .get_public_url(file_path)
+        avatar_url = supabase.storage.from_("avatars").get_public_url(file_path)
         
         # Обновляем профиль
         supabase.table("users")\
@@ -233,7 +232,7 @@ async def delete_avatar(current_user: dict = Depends(get_current_user)):
     try:
         # Удаляем файл из хранилища
         file_path = f"avatars/{user_id}"
-        supabase.storage.from_bucket("avatars").remove([file_path])
+        supabase.storage.from_("avatars").remove([file_path])
         
         # Обновляем профиль
         supabase.table("users")\

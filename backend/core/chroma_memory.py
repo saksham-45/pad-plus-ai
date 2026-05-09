@@ -60,7 +60,7 @@ class ChromaMemory(ABC, Generic[T]):
         db_path: str = "data/chroma"
     ):
         """
-        Инициализирует ChromaMemory
+        Инициализирует ChromaMemory с ленивой загрузкой
         
         Args:
             collection_name: Имя коллекции (по умолчанию CLASS_NAME)
@@ -68,27 +68,58 @@ class ChromaMemory(ABC, Generic[T]):
         """
         self.collection_name = collection_name or self.COLLECTION_NAME
         self.db_path = db_path
+        self._initialized = False
+        self.client = None
+        self.collection = None
+        self.chroma_available = False
+        self.sqlite_conn = None
+        self.sqlite_path = None
         
-        # Инициализация ChromaDB или SQLite fallback
-        if chromadb:
-            try:
-                self.client = chromadb.PersistentClient(path=db_path)
-                self.collection = self.client.get_or_create_collection(
-                    name=self.collection_name,
-                    metadata={"hnsw:space": "cosine"}
-                )
-                self.chroma_available = True
-            except Exception:
+        # Кэш
+        self._cache: Dict[str, T] = {}
+        
+        # Статистика
+        self._stats = {
+            "total_stored": 0,
+            "total_searched": 0,
+            "cache_hits": 0,
+            "cache_misses": 0
+        }
+    
+    def _ensure_initialized(self):
+        """Ленивая инициализация ChromaDB или SQLite"""
+        if self._initialized:
+            return
+        
+        try:
+            # Инициализация ChromaDB или SQLite fallback
+            if chromadb:
+                try:
+                    self.client = chromadb.PersistentClient(path=self.db_path)
+                    self.collection = self.client.get_or_create_collection(
+                        name=self.collection_name,
+                        metadata={"hnsw:space": "cosine"}
+                    )
+                    self.chroma_available = True
+                    logger.info(f"✅ ChromaDB инициализирован: {self.collection_name}")
+                except Exception as e:
+                    logger.warning(f"⚠️ ChromaDB не доступен: {e}")
+                    self.chroma_available = False
+                    self._init_sqlite()
+            else:
                 self.chroma_available = False
-                self._init_sqlite(db_path)
-        else:
+                self._init_sqlite()
+        except Exception as e:
+            logger.error(f"❌ Ошибка инициализации памяти: {e}")
             self.chroma_available = False
-            self._init_sqlite(db_path)
+            self._init_sqlite()
+        finally:
+            self._initialized = True
 
-    def _init_sqlite(self, db_path):
+    def _init_sqlite(self):
         import sqlite3, os
-        os.makedirs(db_path, exist_ok=True)
-        self.sqlite_path = os.path.join(db_path, "chroma_fallback.db")
+        os.makedirs(self.db_path, exist_ok=True)
+        self.sqlite_path = os.path.join(self.db_path, "chroma_fallback.db")
         self.sqlite_conn = sqlite3.connect(self.sqlite_path)
         self.sqlite_conn.execute("""
             CREATE TABLE IF NOT EXISTS items (

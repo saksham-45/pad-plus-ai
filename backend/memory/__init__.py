@@ -19,17 +19,23 @@
 from .base import MemoryInterface, MemoryRecord
 
 # === Новые версии (ChromaDB) — основные ===
-# Fact Memory (векторный поиск фактов)
-from .fact_memory_chroma import FactMemoryChroma, get_fact_memory_chroma
-
-# Vector Memory (долговременная память)
-from .vector_memory_chroma import VectorMemoryChroma, get_vector_memory_chroma
-
-# SmartCache (кратковременный кэш)
-from .smartcache_chroma import SmartCacheChroma, get_smartcache_chroma
+# Удалено в пользу PostgreSQL-версии
 
 # === Другие компоненты памяти ===
-from .rag import RAGMemory, get_rag
+# Условный импорт RAG в зависимости от конфигурации
+try:
+    from core.config_manager import get_database_url
+    db_url = get_database_url()
+    if db_url.startswith('postgresql'):
+        # Используем PostgreSQL версию RAG
+        from .rag_postgres import RAGMemory, get_rag
+    else:
+        # Используем ChromaDB/SQLite версию RAG
+        from .rag import RAGMemory, get_rag
+except ImportError as e:
+    # Если config_manager недоступен, используем ChromaDB по умолчанию
+    from .rag import RAGMemory, get_rag
+
 from .episodic import EpisodicMemory, get_episodic_memory
 from .semantic import SemanticMemory, get_semantic_memory
 from .persona import PersonaMemory, get_persona
@@ -51,13 +57,8 @@ __all__ = [
     "MemoryInterface",
     "MemoryRecord",
     
-    # Новые версии (ChromaDB)
-    "FactMemoryChroma",
-    "get_fact_memory_chroma",
-    "VectorMemoryChroma", 
-    "get_vector_memory_chroma",
-    "SmartCacheChroma",
-    "get_smartcache_chroma",
+    # Новые версии (ChromaDB) - удалено
+
     
     # Другие компоненты
     "RAGMemory",

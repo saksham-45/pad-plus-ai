@@ -14,6 +14,10 @@ from enum import Enum
 import json
 import os
 import sqlite3
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения
+load_dotenv()
 # Попробуем импортировать psycopg2, но не будем падать если его нет
 try:
     import psycopg2

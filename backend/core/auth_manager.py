@@ -255,10 +255,13 @@ async def get_current_user_safe(
     try:
         profile_response = supabase.table("users")\
             .select("*")\
-            .eq("id", user.id)\
+            .eq("id", str(user.id))\
             .execute()
         
-        profile = profile_response.data[0] if profile_response.data else None
+        if profile_response is None:
+            profile = None
+        else:
+            profile = profile_response.data[0] if hasattr(profile_response, 'data') and profile_response.data else None
         
     except Exception as e:
         logger.error(f"Ошибка получения профиля: {e}")

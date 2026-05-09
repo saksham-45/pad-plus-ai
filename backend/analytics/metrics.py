@@ -372,6 +372,45 @@ class Analytics:
         
         return deleted
 
+    def get_activity_data(self, hours: int = 24) -> Dict[str, Any]:
+        """Метрики активности для графиков (для dashboard)"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cutoff = (datetime.now() - timedelta(hours=hours)).isoformat()
+
+        # Данные по часам
+        cursor.execute("""
+            SELECT timestamp FROM analytics_events
+            WHERE event_type = 'message' AND timestamp >= ?
+        """, (cutoff,))
+
+        hourly_data = defaultdict(int)
+        for row in cursor.fetchall():
+            try:
+                ts = datetime.fromisoformat(row['timestamp'])
+                hour_key = ts.strftime("%H:00")
+                hourly_data[hour_key] += 1
+            except:
+                pass
+
+        conn.close()
+
+        # Формируем ответ для фронтенда
+        hours_list = []
+        dialogs_list = []
+        for i in range(hours):
+            hour_ts = datetime.now() - timedelta(hours=i)
+            hour_key = hour_ts.strftime("%H:00")
+            hours_list.insert(0, hour_key)
+            dialogs_list.insert(0, hourly_data.get(hour_key, 0))
+
+        return {
+            "dialogs_per_hour": [{"hour": h, "count": c} for h, c in zip(hours_list, dialogs_list)],
+            "avg_confidence": [],
+            "emotion_history": []
+        }
+
 
 # Глобальный экземпляр
 _analytics: Optional[Analytics] = None
@@ -383,3 +422,8 @@ def get_analytics() -> Analytics:
     if _analytics is None:
         _analytics = Analytics()
     return _analytics
+
+
+def get_metrics() -> Analytics:
+    """Алиас для get_analytics() - для совместимости с frontend_routes"""
+    return get_analytics()

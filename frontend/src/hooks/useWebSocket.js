@@ -30,7 +30,7 @@ export function useWebSocket(url = null) {
       reconnectTimeout.current = null;
     }
 
-    const wsUrl = url || `/ws`;
+    const wsUrl = url || `ws://localhost:8080/ws`;
     
     try {
       const ws = new WebSocket(wsUrl);

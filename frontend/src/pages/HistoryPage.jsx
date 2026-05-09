@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent } from '../components/ui/Card';
+import { apiFetch } from '../services/api';
 
 export default function HistoryPage() {
   const [dialogs, setDialogs] = useState([]);
@@ -20,7 +21,6 @@ export default function HistoryPage() {
   // Загрузка диалогов
   const loadDialogs = async (reset = false) => {
     setLoading(true);
-    const token = localStorage.getItem('access_token');
     const currentOffset = reset ? 0 : offset;
 
     try {
@@ -35,9 +35,7 @@ export default function HistoryPage() {
         params.append('is_favorite', filterFavorite);
       }
 
-      const res = await fetch(`/api/v1/dialogs?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await apiFetch(`/api/v1/dialogs?${params}`);
 
       if (res.ok) {
         const data = await res.json();
@@ -58,11 +56,8 @@ export default function HistoryPage() {
 
   // Загрузка статистики
   const loadStats = async () => {
-    const token = localStorage.getItem('access_token');
     try {
-      const res = await fetch('/api/v1/dialogs/stats', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await apiFetch('/api/v1/dialogs/stats');
       if (res.ok) {
         const data = await res.json();
         setStats(data);
@@ -77,7 +72,6 @@ export default function HistoryPage() {
     loadStats();
   }, [sortBy, sortOrder, filterFavorite]);
 
-  // Поиск
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
       setIsSearching(false);
@@ -86,12 +80,9 @@ export default function HistoryPage() {
     }
 
     setIsSearching(true);
-    const token = localStorage.getItem('access_token');
 
     try {
-      const res = await fetch(`/api/v1/dialogs/search?query=${encodeURIComponent(searchQuery)}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await apiFetch(`/api/v1/dialogs/search?query=${encodeURIComponent(searchQuery)}`);
 
       if (res.ok) {
         const data = await res.json();
@@ -102,13 +93,9 @@ export default function HistoryPage() {
     }
   };
 
-  // Выбор диалога
   const selectDialog = async (dialogId) => {
-    const token = localStorage.getItem('access_token');
     try {
-      const res = await fetch(`/api/v1/dialogs/${dialogId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await apiFetch(`/api/v1/dialogs/${dialogId}`);
 
       if (res.ok) {
         const data = await res.json();
@@ -119,15 +106,12 @@ export default function HistoryPage() {
     }
   };
 
-  // Удаление диалога
   const deleteDialog = async (dialogId) => {
     if (!confirm('Вы уверены, что хотите удалить этот диалог?')) return;
 
-    const token = localStorage.getItem('access_token');
     try {
-      const res = await fetch(`/api/v1/dialogs/${dialogId}`, {
+      const res = await apiFetch(`/api/v1/dialogs/${dialogId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
       });
 
       if (res.ok) {
@@ -143,13 +127,10 @@ export default function HistoryPage() {
     }
   };
 
-  // Переключение избранного
   const toggleFavorite = async (dialogId) => {
-    const token = localStorage.getItem('access_token');
     try {
-      const res = await fetch(`/api/v1/dialogs/${dialogId}/favorite`, {
+      const res = await apiFetch(`/api/v1/dialogs/${dialogId}/favorite`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
       });
 
       if (res.ok) {
@@ -167,13 +148,9 @@ export default function HistoryPage() {
     }
   };
 
-  // Экспорт диалога
   const exportDialog = async (dialogId, format) => {
-    const token = localStorage.getItem('access_token');
     try {
-      const res = await fetch(`/api/v1/dialogs/${dialogId}/export?format=${format}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const res = await apiFetch(`/api/v1/dialogs/${dialogId}/export?format=${format}`);
 
       if (res.ok) {
         const blob = await res.blob();
@@ -190,15 +167,12 @@ export default function HistoryPage() {
     }
   };
 
-  // Очистка всей истории
   const clearAllHistory = async () => {
     if (!confirm('Вы уверены, что хотите удалить ВСЮ историю диалогов? Это действие нельзя отменить.')) return;
 
-    const token = localStorage.getItem('access_token');
     try {
-      const res = await fetch('/api/v1/dialogs', {
+      const res = await apiFetch('/api/v1/dialogs', {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
       });
 
       if (res.ok) {

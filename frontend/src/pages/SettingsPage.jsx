@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '../components/ui/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
+import { apiFetch } from '../services/api';
 
 // Вкладки настроек
 const tabs = [
@@ -60,22 +61,15 @@ export default function SettingsPage() {
 
   const loadSettings = async () => {
     setLoading(true);
-    const token = localStorage.getItem('access_token');
 
     try {
-      // Загружаем профиль
-      const profileRes = await fetch('/api/v1/user/profile', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const profileRes = await apiFetch('/api/v1/user/profile');
       if (profileRes.ok) {
         const profileData = await profileRes.json();
         setProfile(profileData);
       }
 
-      // Загружаем все настройки
-      const settingsRes = await fetch('/api/v1/user/settings', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const settingsRes = await apiFetch('/api/v1/user/settings');
       if (settingsRes.ok) {
         const settingsData = await settingsRes.json();
         setPersona(settingsData.persona);
@@ -97,15 +91,11 @@ export default function SettingsPage() {
   // Сохранение профиля
   const saveProfile = async () => {
     setSaving(true);
-    const token = localStorage.getItem('access_token');
 
     try {
-      const res = await fetch('/api/v1/user/profile', {
+      const res = await apiFetch('/api/v1/user/profile', {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           full_name: profile.full_name,
           email: profile.email,
@@ -138,15 +128,11 @@ export default function SettingsPage() {
     }
 
     setSaving(true);
-    const token = localStorage.getItem('access_token');
 
     try {
-      const res = await fetch('/api/v1/user/password', {
+      const res = await apiFetch('/api/v1/user/password', {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           current_password: passwords.current,
           new_password: passwords.new,
@@ -168,19 +154,15 @@ export default function SettingsPage() {
   };
 
   // Сохранение настроек persona
-  const savePersona = async () => {
-    setSaving(true);
-    const token = localStorage.getItem('access_token');
+    const savePersona = async () => {
+      setSaving(true);
 
-    try {
-      const res = await fetch('/api/v1/user/persona', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(persona),
-      });
+      try {
+        const res = await apiFetch('/api/v1/user/persona', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(persona),
+        });
 
       if (res.ok) {
         showMessage('success', 'Настройки Persona обновлены');
@@ -195,19 +177,15 @@ export default function SettingsPage() {
   };
 
   // Сохранение настроек уведомлений
-  const saveNotifications = async () => {
-    setSaving(true);
-    const token = localStorage.getItem('access_token');
+    const saveNotifications = async () => {
+      setSaving(true);
 
-    try {
-      const res = await fetch('/api/v1/user/notifications', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(notifications),
-      });
+      try {
+        const res = await apiFetch('/api/v1/user/notifications', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(notifications),
+        });
 
       if (res.ok) {
         showMessage('success', 'Настройки уведомлений обновлены');
@@ -222,19 +200,15 @@ export default function SettingsPage() {
   };
 
   // Сохранение настроек внешнего вида
-  const saveAppearance = async () => {
-    setSaving(true);
-    const token = localStorage.getItem('access_token');
+    const saveAppearance = async () => {
+      setSaving(true);
 
-    try {
-      const res = await fetch('/api/v1/user/appearance', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(appearance),
-      });
+      try {
+        const res = await apiFetch('/api/v1/user/appearance', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(appearance),
+        });
 
       if (res.ok) {
         showMessage('success', 'Настройки внешнего вида обновлены');

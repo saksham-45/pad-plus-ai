@@ -9,6 +9,7 @@ import {
   formatModelInfo,
   clearAllCache
 } from '../services/modelCache';
+import { apiFetch, getAuthToken } from '../services/api';
 
 const clearCache = (providerId) => {
   // Clear cache for specific provider
@@ -18,53 +19,43 @@ const clearCache = (providerId) => {
   } catch {}
 };
 
-// Полный список провайдеров LiteLLM (с массивами моделей)
-const litellmProviders = [
-  { id: 'openai', name: 'OpenAI', models: ['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo', 'gpt-4o'], latency: 'Low', cost: 'High', type: 'API Key' },
-  { id: 'google', name: 'Google Gemini', models: ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'], latency: 'Low', cost: 'Medium', type: 'API Key' },
-  { id: 'anthropic', name: 'Anthropic Claude', models: ['claude-3-5-sonnet', 'claude-3-haiku', 'claude-3-opus'], latency: 'Medium', cost: 'High', type: 'API Key' },
-  { id: 'groq', name: 'Groq', models: ['llama-3.1-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it'], latency: 'Ultra', cost: 'Low', type: 'API Key' },
-  { id: 'openrouter', name: 'OpenRouter', models: ['openrouter/auto', 'openai/gpt-4', 'google/gemini-2.0-flash', 'anthropic/claude-3-sonnet', 'meta-llama/llama-3-70b-instruct'], latency: 'Medium', cost: 'Medium', type: 'API Key' },
-  { id: 'azure', name: 'Azure OpenAI', models: ['gpt-4', 'gpt-35-turbo'], latency: 'Low', cost: 'High', type: 'API Key' },
-  { id: 'cohere', name: 'Cohere', models: ['command-r-plus', 'command-r', 'command'], latency: 'Medium', cost: 'Medium', type: 'API Key' },
-  { id: 'huggingface', name: 'HuggingFace', models: ['mistralai/Mistral-7B', 'meta-llama/Llama-2-70b'], latency: 'Medium', cost: 'Free', type: 'API Key' },
-  { id: 'together', name: 'Together AI', models: ['meta-llama/Llama-3-70b', 'mistralai/Mixtral-8x7B'], latency: 'Medium', cost: 'Medium', type: 'API Key' },
-  { id: 'anyscale', name: 'Anyscale', models: ['meta-llama/Llama-2-70b', 'mistralai/Mistral-7B'], latency: 'Medium', cost: 'Medium', type: 'API Key' },
-  { id: 'deepinfra', name: 'DeepInfra', models: ['mistralai/Mistral-7B', 'meta-llama/Llama-2-70b'], latency: 'Medium', cost: 'Free', type: 'API Key' },
-  { id: 'replicate', name: 'Replicate', models: ['meta/llama-2-70b', 'mistralai/mistral-7b'], latency: 'High', cost: 'Medium', type: 'API Key' },
-  { id: 'ollama', name: 'Ollama (Local)', models: ['llama2', 'mistral', 'codellama'], latency: 'None', cost: 'Free', type: 'Local' },
-  { id: 'deepseek', name: 'DeepSeek', models: ['deepseek-chat', 'deepseek-coder'], latency: 'Medium', cost: 'Free', type: 'API Key' },
-  { id: 'xai', name: 'xAI Grok', models: ['grok-beta'], latency: 'Medium', cost: 'High', type: 'API Key' },
-  { id: 'mistral', name: 'Mistral AI', models: ['mistral-large', 'mistral-medium', 'open-mistral-7b'], latency: 'Low', cost: 'Medium', type: 'API Key' },
-  { id: 'nvidia', name: 'NVIDIA NIM', models: ['meta/llama3-70b-instruct', 'mistralai/mistral-large'], latency: 'Low', cost: 'High', type: 'API Key' },
-  { id: 'fireworks', name: 'Fireworks', models: ['accounts/fireworks/models/llama-v3-70b-instruct'], latency: 'Medium', cost: 'Free', type: 'API Key' },
-  { id: 'gigachat', name: 'GigaChat', models: ['GigaChat', 'GigaChat-Pro'], latency: 'Low', cost: 'Medium', type: 'OAuth' },
-  { id: 'yandex', name: 'YandexGPT', models: ['yandexgpt-lite'], latency: 'Low', cost: 'Medium', type: 'API Key' },
+// Fallback: актуальные провайдеры LiteLLM (если API недоступен)
+const fallbackProviders = [
+  { id: 'gigachat', name: 'GigaChat', icon: '🇷🇺', models: 2, latency: 'Low', cost: 'Medium', type: 'OAuth', free_models: ['gigachat/GigaChat-2-Lite'] },
+  { id: 'google', name: 'Google Gemini', icon: '🔮', models: 3, latency: 'Low', cost: 'Medium', type: 'API Key', free_models: ['gemini-2.0-flash', 'gemini-2.0-flash-lite'] },
+  { id: 'groq', name: 'Groq', icon: '⚡', models: 3, latency: 'Ultra', cost: 'Low', type: 'API Key', free_models: ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile'] },
+  { id: 'openai', name: 'OpenAI', icon: '🟢', models: 4, latency: 'Low', cost: 'High', type: 'API Key', free_models: [] },
+  { id: 'anthropic', name: 'Anthropic Claude', icon: '🧠', models: 3, latency: 'Medium', cost: 'High', type: 'API Key', free_models: [] },
+  { id: 'openrouter', name: 'OpenRouter', icon: '🌐', models: 5, latency: 'Medium', cost: 'Medium', type: 'API Key', free_models: [] },
+  { id: 'mistral', name: 'Mistral AI', icon: '🌫️', models: 3, latency: 'Low', cost: 'Medium', type: 'API Key', free_models: [] },
+  { id: 'cohere', name: 'Cohere', icon: '🟣', models: 3, latency: 'Medium', cost: 'Medium', type: 'API Key', free_models: [] },
+  { id: 'deepseek', name: 'DeepSeek', icon: '🔍', models: 3, latency: 'Medium', cost: 'Free', type: 'API Key', free_models: ['deepseek-chat'] },
+  { id: 'xai', name: 'xAI Grok', icon: '🧮', models: 2, latency: 'Medium', cost: 'High', type: 'API Key', free_models: [] },
+  { id: 'ollama', name: 'Ollama (Local)', icon: '🦙', models: 3, latency: 'None', cost: 'Free', type: 'Local', free_models: ['llama3.2', 'mistral'] },
+  { id: 'azure', name: 'Azure OpenAI', icon: '🔵', models: 2, latency: 'Low', cost: 'High', type: 'API Key', free_models: [] },
+  { id: 'together', name: 'Together AI', icon: '🤝', models: 2, latency: 'Medium', cost: 'Medium', type: 'API Key', free_models: [] },
+  { id: 'fireworks', name: 'Fireworks', icon: '🎆', models: 1, latency: 'Medium', cost: 'Free', type: 'API Key', free_models: [] },
+  { id: 'nvidia', name: 'NVIDIA NIM', icon: '🟩', models: 2, latency: 'Low', cost: 'High', type: 'API Key', free_models: [] },
 ];
 
-// Все доступные провайдеры (для отображения)
-const allProviders = [
-  { id: 'openai', name: 'OpenAI', icon: '🟢', models: 4, latency: 'Low', cost: 'High', type: 'API Key' },
-  { id: 'google', name: 'Google Gemini', icon: '🔮', models: 3, latency: 'Low', cost: 'Medium', type: 'API Key' },
-  { id: 'anthropic', name: 'Anthropic Claude', icon: '🧠', models: 3, latency: 'Medium', cost: 'High', type: 'API Key' },
-  { id: 'groq', name: 'Groq', icon: '⚡', models: 3, latency: 'Ultra', cost: 'Low', type: 'API Key' },
-  { id: 'openrouter', name: 'OpenRouter', icon: '🌐', models: 5, latency: 'Medium', cost: 'Medium', type: 'API Key' },
-  { id: 'azure', name: 'Azure OpenAI', icon: '🔵', models: 2, latency: 'Low', cost: 'High', type: 'API Key' },
-  { id: 'cohere', name: 'Cohere', icon: '🟣', models: 3, latency: 'Medium', cost: 'Medium', type: 'API Key' },
-  { id: 'huggingface', name: 'HuggingFace', icon: '🤗', models: 2, latency: 'Medium', cost: 'Free', type: 'API Key' },
-  { id: 'together', name: 'Together AI', icon: '🤝', models: 2, latency: 'Medium', cost: 'Medium', type: 'API Key' },
-  { id: 'anyscale', name: 'Anyscale', icon: '🔷', models: 2, latency: 'Medium', cost: 'Medium', type: 'API Key' },
-  { id: 'deepinfra', name: 'DeepInfra', icon: '🏗️', models: 2, latency: 'Medium', cost: 'Free', type: 'API Key' },
-  { id: 'replicate', name: 'Replicate', icon: '🔄', models: 2, latency: 'High', cost: 'Medium', type: 'API Key' },
-  { id: 'ollama', name: 'Ollama (Local)', icon: '🦙', models: 3, latency: 'None', cost: 'Free', type: 'Local' },
-  { id: 'deepseek', name: 'DeepSeek', icon: '🔍', models: 2, latency: 'Medium', cost: 'Free', type: 'API Key' },
-  { id: 'xai', name: 'xAI Grok', icon: '🧮', models: 1, latency: 'Medium', cost: 'High', type: 'API Key' },
-  { id: 'mistral', name: 'Mistral AI', icon: '🌫️', models: 3, latency: 'Low', cost: 'Medium', type: 'API Key' },
-  { id: 'nvidia', name: 'NVIDIA NIM', icon: '🟩', models: 2, latency: 'Low', cost: 'High', type: 'API Key' },
-  { id: 'fireworks', name: 'Fireworks', icon: '🎆', models: 1, latency: 'Medium', cost: 'Free', type: 'API Key' },
-  { id: 'gigachat', name: 'GigaChat', icon: '🇷🇺', models: 2, latency: 'Low', cost: 'Medium', type: 'OAuth' },
-  { id: 'yandex', name: 'YandexGPT', icon: '🟡', models: 1, latency: 'Low', cost: 'Medium', type: 'API Key' },
-];
+// Fallback: модели по провайдерам
+const fallbackModels = {
+  gigachat: ['GigaChat-2-Lite', 'GigaChat-2-Pro', 'GigaChat-Max'],
+  google: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+  groq: ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1', 'o3-mini'],
+  anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
+  openrouter: ['openrouter/auto', 'openai/gpt-4o', 'anthropic/claude-3-5-sonnet'],
+  mistral: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest'],
+  cohere: ['command-r-plus', 'command-r', 'command'],
+  deepseek: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'],
+  xai: ['grok-2', 'grok-2-vision'],
+  ollama: ['llama3.2', 'mistral', 'codellama'],
+  azure: ['gpt-4o', 'gpt-4', 'gpt-35-turbo'],
+  together: ['meta-llama/Llama-3-70b', 'mistralai/Mixtral-8x7B'],
+  fireworks: ['accounts/fireworks/models/llama-v3-70b-instruct'],
+  nvidia: ['meta/llama3-70b-instruct', 'mistralai/mistral-large'],
+};
 
 // Быстрый старт шаги
 const quickStartSteps = [
@@ -94,6 +85,8 @@ const authTypes = [
 
 export default function ProvidersPage() {
   const [keys, setKeys] = useState([]);
+  const [providers, setProviders] = useState([]); // Загруженные с API
+  const [providersLoading, setProvidersLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all'); // all, connected, available
@@ -109,17 +102,61 @@ export default function ProvidersPage() {
   const [editingKey, setEditingKey] = useState(null);
   const [editModel, setEditModel] = useState('');
 
-  // Загрузка подключенных ключей
+  // Загрузка списка провайдеров с API
   useEffect(() => {
+    fetchProviders();
     fetchKeys();
   }, []);
 
+  const fetchProviders = async () => {
+    setProvidersLoading(true);
+    try {
+      const response = await apiFetch('/api/v1/providers');
+      if (response.ok) {
+        const data = await response.json();
+        // Обогащаем данные fallback-иконками если нужно
+        const enriched = data.map(p => {
+          const fallback = fallbackProviders.find(fp => fp.id === p.id);
+          return {
+            ...p,
+            icon: fallback?.icon || '🔗',
+            models: p.free_models?.length || fallback?.models || 0,
+            latency: fallback?.latency || 'Medium',
+            cost: fallback?.cost || 'Medium',
+            type: fallback?.type || 'API Key',
+          };
+        });
+        setProviders(enriched);
+      } else {
+        setProviders(fallbackProviders);
+      }
+    } catch (error) {
+      console.error('Failed to fetch providers:', error);
+      setProviders(fallbackProviders);
+    } finally {
+      setProvidersLoading(false);
+    }
+  };
+
+  // Функция для получения токена из Supabase storage
+  const getAuthToken = () => {
+    // Пробуем получить токен из Supabase storage
+    const supabaseKeys = Object.keys(localStorage).filter(key => key.startsWith('sb-') && key.endsWith('-auth-token'));
+    if (supabaseKeys.length > 0) {
+      try {
+        const authData = JSON.parse(localStorage.getItem(supabaseKeys[0]));
+        return authData?.access_token;
+      } catch (e) {
+        console.error('Error parsing Supabase auth token:', e);
+      }
+    }
+    // Fallback на старый формат
+    return localStorage.getItem('access_token');
+  };
+
   const fetchKeys = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/v1/keys?offset=0&limit=100', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await apiFetch('/api/v1/keys?offset=0&limit=100');
 
       if (response.ok) {
         const result = await response.json();
@@ -142,8 +179,9 @@ export default function ProvidersPage() {
     return { status: 'Connected', color: 'text-blue-500', badge: 'bg-blue-500/10 text-blue-500' };
   };
 
-  // Фильтрация провайдеров
-  const filteredProviders = allProviders.filter(provider => {
+  // Фильтрация провайдеров (используем загруженные с API или fallback)
+  const displayProviders = providers.length > 0 ? providers : fallbackProviders;
+  const filteredProviders = displayProviders.filter(provider => {
     const matchesSearch = provider.name.toLowerCase().includes(searchQuery.toLowerCase());
     const status = getProviderStatus(provider.id);
     if (filter === 'connected') return matchesSearch && status.status !== 'Available';
@@ -157,7 +195,8 @@ export default function ProvidersPage() {
 
   // Обработчик подключения - открывает форму добавления ключа
   const handleConnect = (provider) => {
-    const fullProvider = litellmProviders.find(p => p.id === provider.id);
+    // Используем загруженного провайдера или fallback
+    const fullProvider = displayProviders.find(p => p.id === provider.id) || provider;
     if (fullProvider) {
       setSelectedProvider(fullProvider);
       setShowAddForm(true);
@@ -184,14 +223,10 @@ export default function ProvidersPage() {
     }
   };
 
-  // Загрузка моделей из API
   const fetchModelsFromApi = async (providerId) => {
     setIsRefreshing(true);
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/v1/providers/${providerId}/models`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-      });
+      const response = await apiFetch(`/api/v1/providers/${providerId}/models`);
       if (response.ok) {
         const data = await response.json();
         const models = data.models || [];
@@ -213,16 +248,20 @@ export default function ProvidersPage() {
 
   // Использование статических моделей (fallback)
   const useStaticModels = (providerId) => {
-    const fullProvider = litellmProviders.find(p => p.id === providerId);
-    if (fullProvider) {
-      const staticModels = fullProvider.models.map(m => ({
-        id: m,
+    const models = fallbackModels[providerId] || [];
+    if (models.length > 0) {
+      const staticModels = models.map(m => ({
+        id: `${providerId}/${m}`,
         name: m,
+        provider: providerId,
         cost: 'unknown',
         isStatic: true
       }));
       setProviderModels(staticModels);
       setCacheStatus({ status: 'stale', message: 'Данные устарели (статические)' });
+    } else {
+      setProviderModels([]);
+      setCacheStatus({ status: 'error', message: 'Нет доступных моделей' });
     }
   };
 
@@ -236,13 +275,9 @@ export default function ProvidersPage() {
   // Обработчик добавления ключа
   const handleAddKey = async (formData) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/v1/keys', {
+      const response = await apiFetch('/api/v1/keys', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
       if (response.ok) {
@@ -276,13 +311,10 @@ export default function ProvidersPage() {
     }
   };
 
-  // Обработчик установки по умолчанию
   const handleSetDefault = async (keyId) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/v1/keys/${keyId}/set-default`, {
+      const response = await apiFetch(`/api/v1/keys/${keyId}/set-default`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
       });
       if (response.ok) {
         await fetchKeys();
@@ -294,23 +326,34 @@ export default function ProvidersPage() {
     }
   };
 
-  // Обработчик удаления ключа
   const handleDelete = async (keyId) => {
-    if (!confirm('Удалить этот API ключ?')) return;
+    // Современная функция подтверждения
+    const isConfirmed = window.confirm('Удалить этот API ключ?');
+    if (!isConfirmed) return;
 
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/v1/keys/${keyId}`, {
+      console.log(`Deleting key: ${keyId}`);
+      const response = await apiFetch(`/api/v1/keys/${keyId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
       });
+      
+      console.log('Delete response:', response);
+      
       if (response.ok) {
+        const result = await response.json();
+        console.log('Delete result:', result);
         await fetchKeys();
         // Отправляем событие для обновления в App.jsx
         window.dispatchEvent(new CustomEvent('keys-updated'));
+        alert('API ключ успешно удален!');
+      } else {
+        const errorText = await response.text();
+        console.error('Delete failed:', response.status, errorText);
+        alert(`Ошибка удаления: ${response.status}`);
       }
     } catch (error) {
       console.error('Failed to delete key:', error);
+      alert('Ошибка при удалении API ключа');
     }
   };
 
@@ -328,13 +371,9 @@ export default function ProvidersPage() {
     if (!editingKey) return;
 
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/v1/keys/${editingKey.id}`, {
+      const response = await apiFetch(`/api/v1/keys/${editingKey.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model_preference: editModel,
         }),

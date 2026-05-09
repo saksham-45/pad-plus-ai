@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
 import { useWebSocket } from '../hooks/useWebSocket';
 import CognitivePanel from './CognitivePanel';
+import { apiFetch } from '../services/api';
 
 export function ChatInterface({ selectedModel, user }) {
   const [messages, setMessages] = useState([]);
@@ -65,21 +66,16 @@ export function ChatInterface({ selectedModel, user }) {
     });
 
     try {
-      const token = localStorage.getItem('access_token');
-
       // Отправляем через полную систему (Pipeline)
-      const response = await fetch('/api/v1/chat', {
+      const response = await apiFetch('/api/v1/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
         body: JSON.stringify({
           message: userMessage.content,
           key_id: selectedModel?.keyId || null,
           model: selectedModel?.id || 'auto',
           provider: selectedModel?.provider || null,
           auto_mode: false,  // Всегда через полную систему
+          explain: true,  // === COGNITIVE UX: Возвращать полные мета-данные ===
         }),
       });
 

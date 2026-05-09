@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
+import { apiFetch } from '../services/api';
 
 export function ProviderTester({ keyId, provider, model }) {
   const [testing, setTesting] = useState(false);
@@ -11,12 +12,8 @@ export function ProviderTester({ keyId, provider, model }) {
     setResult(null);
 
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/v1/keys/${keyId}/test`, {
+      const response = await apiFetch(`/api/v1/keys/${keyId}/test`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
       });
 
       if (!response.ok) {

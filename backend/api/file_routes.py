@@ -27,8 +27,16 @@ import io
 import json
 import hashlib
 import httpx
+import logging
 
-logger = logging.getLogger("padplus")
+# Валидация MIME type по содержимому файла
+try:
+    import magic
+    HAS_MAGIC = True
+except ImportError:
+    HAS_MAGIC = False
+    logger_temp = logging.getLogger("padplus")
+    logger_temp.warning("⚠️ python-magic не установлен, проверка MIME type будет неполной")
 
 router = APIRouter(prefix="/api/v1", tags=["Document Management"])
 
@@ -135,6 +143,87 @@ class SearchResult(BaseModel):
 # ============================================================================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 # ============================================================================
+
+# ============================================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ============================================================================
+
+def validate_file_mime_type(content: bytes, claimed_mime: str, filename: str) -> str:
+    """
+    Валидирует MIME type файла по его содержимому (magic bytes).
+    
+    Параметры:
+    - content: содержимое файла
+    - claimed_mime: заявленный MIME type от клиента
+    - filename: имя файла
+    
+    Возвращает валидный MIME type или выбрасывает исключение
+    """
+    # Если magic недоступен, используем расширение файла как fallback
+    if not HAS_MAGIC:
+        # Базовая проверка по расширению
+        ext = Path(filename).suffix.lower()
+        ext_to_mime = {
+            '.pdf': 'application/pdf',
+            '.txt': 'text/plain',
+            '.md': 'text/markdown',
+            '.csv': 'text/csv',
+            '.json': 'application/json',
+            '.xml': 'application/xml',
+            '.html': 'text/html',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.doc': 'application/msword',
+        }
+        detected_mime = ext_to_mime.get(ext, claimed_mime)
+        if detected_mime not in ALLOWED_TYPES:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Недопустимый тип файла по расширению: {ext}"
+            )
+        return detected_mime
+    
+    # Проверяем MIME type по содержимому (magic bytes)
+    try:
+        detected_mime = magic.from_buffer(content, mime=True)
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось определить MIME type: {e}, используем заявленный")
+        detected_mime = claimed_mime
+    
+    # Проверяем опасные типы
+    dangerous_types = [
+        'application/x-executable',
+        'application/x-msdownload',
+        'application/x-msdos-program',
+        'application/x-sh',
+        'application/x-shellscript',
+        'application/x-bash',
+        'application/zip',  # Опасно - может быть bomb
+    ]
+    
+    if detected_mime in dangerous_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Опасный тип файла: {detected_mime} не разрешен"
+        )
+    
+    # Если обнаруженный MIME отличается от заявленного, логируем предупреждение
+    if detected_mime != claimed_mime:
+        logger.warning(
+            f"⚠️ MIME type mismatch: claimed={claimed_mime}, detected={detected_mime}, file={filename}"
+        )
+    
+    # Проверяем что MIME type в списке разрешённых
+    if detected_mime not in ALLOWED_TYPES:
+        # Пытаемся найти близкий матч
+        if any(allowed in detected_mime or detected_mime in allowed for allowed in ALLOWED_TYPES):
+            return detected_mime
+        raise HTTPException(
+            status_code=400,
+            detail=f"Недопустимый тип файла: {detected_mime}"
+        )
+    
+    return detected_mime
+
 
 def get_user_id(authorization: Optional[str]) -> str:
     """Извлекает user_id из токена"""
@@ -345,7 +434,7 @@ async def upload_document(
     collection_id: Optional[str] = Form(None),
     authorization: Optional[str] = Header(None)
 ):
-    """Загрузка документа"""
+    """Загрузка документа с валидацией MIME type"""
     supabase = get_supabase()
     
     try:
@@ -353,18 +442,27 @@ async def upload_document(
     except HTTPException:
         raise HTTPException(status_code=401, detail="Нет авторизации")
 
-    if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(status_code=400, detail=f"Недопустимый тип: {file.content_type}")
-
+    # Читаем содержимое файла
     content = await file.read()
+    
+    # Проверяем размер
     if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="Файл слишком большой (макс 50MB)")
+        raise HTTPException(status_code=413, detail="Файл слишком большой (макс 50MB)")
+    
+    # Валидируем MIME type по содержимому файла
+    try:
+        validated_mime = validate_file_mime_type(content, file.content_type or "application/octet-stream", file.filename)
+    except HTTPException:
+        raise
+    
+    # Базовая проверка хранилища пользователя (опционально)
+    # Можно добавить лимит на общий размер файлов пользователя
 
     file_id = str(uuid.uuid4())
     file_path = f"documents/{user_id}/{file_id}_{file.filename}"
 
     try:
-        supabase.storage.from_bucket("user_files").upload(file_path, content, {"content-type": file.content_type})
+        supabase.storage.from_("user_files").upload(file_path, content, {"content-type": validated_mime})
     except Exception as e:
         logger.error(f"❌ Ошибка загрузки в Storage: {e}")
         raise HTTPException(status_code=500, detail="Ошибка загрузки файла")
@@ -374,7 +472,7 @@ async def upload_document(
         "user_id": user_id,
         "title": file.filename,
         "filename": file.filename,
-        "file_type": file.content_type,
+        "file_type": validated_mime,
         "file_size": len(content),
         "file_url": file_path,
         "collection_id": collection_id,
@@ -384,7 +482,7 @@ async def upload_document(
     }).execute()
 
     settings = {"chunk_size": CHUNK_SIZE, "chunk_overlap": CHUNK_OVERLAP, "auto_summarize": True, "auto_tag": True}
-    await process_document(supabase, file_id, content, file.content_type, user_id, settings)
+    await process_document(supabase, file_id, content, validated_mime, user_id, settings)
 
     return {"id": file_id, "title": file.filename, "status": "completed", "message": "Документ загружен и обработан"}
 
@@ -395,34 +493,46 @@ async def upload_from_url(
     collection_id: Optional[str] = None,
     authorization: Optional[str] = Header(None)
 ):
-    """Загрузка документа из интернета"""
+    """Загрузка документа из интернета с валидацией"""
     supabase = get_supabase()
     user_id = get_user_id(authorization)
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, follow_redirects=True)
-        if response.status_code != 200:
-            raise HTTPException(status_code=400, detail="Не удалось скачать файл")
+    # Проверяем размер URL для безопасности
+    if len(url) > 2048:
+        raise HTTPException(status_code=400, detail="URL слишком длинный")
+    
+    # Загружаем файл с таймаутом
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, follow_redirects=True)
+            if response.status_code != 200:
+                raise HTTPException(status_code=400, detail=f"Не удалось скачать файл: {response.status_code}")
 
-        content = response.content
-        content_type = response.headers.get("content-type", "application/octet-stream")
-        filename = url.split("/")[-1] or "document"
+            content = response.content
+            content_type = response.headers.get("content-type", "application/octet-stream")
+            filename = url.split("/")[-1] or "document"
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=408, detail="Таймаут при скачивании файла")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=400, detail=f"Ошибка сети: {str(e)}")
+    
+    # Проверяем размер
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="Файл слишком большой (макс 50MB)")
 
-    if "pdf" in content_type:
-        file_type = "application/pdf"
-    elif "word" in content_type or "docx" in content_type:
-        file_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    elif "text" in content_type:
-        file_type = "text/plain"
-    else:
-        file_type = "application/octet-stream"
+    # Валидируем MIME type по содержимому
+    try:
+        validated_mime = validate_file_mime_type(content, content_type, filename)
+    except HTTPException:
+        raise
 
     file_id = str(uuid.uuid4())
     file_path = f"documents/{user_id}/{file_id}_{filename}"
 
     try:
-        supabase.storage.from_bucket("user_files").upload(file_path, content, {"content-type": file_type})
+        supabase.storage.from_("user_files").upload(file_path, content, {"content-type": validated_mime})
     except Exception as e:
+        logger.error(f"❌ Ошибка сохранения файла: {e}")
         raise HTTPException(status_code=500, detail="Ошибка сохранения файла")
 
     result = supabase.table("documents").insert({
@@ -430,7 +540,7 @@ async def upload_from_url(
         "user_id": user_id,
         "title": filename,
         "filename": filename,
-        "file_type": file_type,
+        "file_type": validated_mime,
         "file_size": len(content),
         "file_url": file_path,
         "collection_id": collection_id,
@@ -440,7 +550,7 @@ async def upload_from_url(
     }).execute()
 
     settings = {"chunk_size": CHUNK_SIZE, "chunk_overlap": CHUNK_OVERLAP, "auto_summarize": True, "auto_tag": True}
-    await process_document(supabase, file_id, content, file_type, user_id, settings)
+    await process_document(supabase, file_id, content, validated_mime, user_id, settings)
 
     return {"id": file_id, "title": filename, "status": "completed", "message": "Документ загружен из URL"}
 
@@ -561,7 +671,7 @@ async def delete_document(
     file_path = doc_result.data[0].get("file_url")
     if file_path:
         try:
-            supabase.storage.from_bucket("user_files").remove([file_path])
+            supabase.storage.from_("user_files").remove([file_path])
         except Exception:
             pass
 

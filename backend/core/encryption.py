@@ -150,6 +150,16 @@ def get_encryptor() -> KeyEncryptor:
     return _encryptor
 
 
+def generate_encryption_key() -> str:
+    """
+    Генерирует новый ключ шифрования
+    
+    Returns:
+        str: Base64 закодированный ключ для Fernet
+    """
+    return Fernet.generate_key().decode()
+
+
 def initialize_encryptor(encryption_key: str) -> KeyEncryptor:
     """
     Принудительно инициализирует шифровальщик

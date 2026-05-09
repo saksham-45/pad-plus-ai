@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
+import { apiFetch } from '../services/api';
 
 const providerIcons = {
   google: '🔵',
@@ -21,18 +22,23 @@ export function ProviderSelector({ onSelect, selectedProvider }) {
   useEffect(() => {
     const fetchProviders = async () => {
       try {
-        const response = await fetch('/api/v1/providers');
+        const response = await apiFetch('/api/v1/providers');
         if (!response.ok) throw new Error('Failed to fetch providers');
         const data = await response.json();
         setProviders(data);
       } catch (err) {
         setError(err.message);
-        // Fallback providers
+        // Fallback providers (актуальный список)
         setProviders([
-          { id: 'google', name: 'Google AI Studio', description: 'Модели Gemini', free_models: ['gemini-2.0-flash'], is_premium: false },
-          { id: 'groq', name: 'Groq', description: 'Быстрые открытые модели', free_models: ['llama-3.1-70b-versatile'], is_premium: false },
-          { id: 'openai', name: 'OpenAI', description: 'Модели GPT', free_models: [], is_premium: true },
-          { id: 'anthropic', name: 'Anthropic', description: 'Модели Claude', free_models: [], is_premium: true },
+          { id: 'gigachat', name: 'GigaChat', description: 'Модели GigaChat от Сбера', free_models: ['gigachat/GigaChat-2-Lite'], is_premium: false },
+          { id: 'google', name: 'Google AI Studio', description: 'Модели Gemini', free_models: ['gemini-2.0-flash', 'gemini-2.0-flash-lite'], is_premium: false },
+          { id: 'groq', name: 'Groq', description: 'Быстрые открытые модели', free_models: ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile'], is_premium: false },
+          { id: 'openai', name: 'OpenAI', description: 'Модели GPT-4o, o1, o3-mini', free_models: [], is_premium: true },
+          { id: 'anthropic', name: 'Anthropic', description: 'Модели Claude 3.5', free_models: [], is_premium: true },
+          { id: 'openrouter', name: 'OpenRouter', description: '100+ моделей через единый API', free_models: [], is_premium: true },
+          { id: 'mistral', name: 'Mistral AI', description: 'Модели Mistral', free_models: [], is_premium: true },
+          { id: 'deepseek', name: 'DeepSeek', description: 'Модели DeepSeek Chat, Coder', free_models: ['deepseek-chat'], is_premium: false },
+          { id: 'ollama', name: 'Ollama (Local)', description: 'Локальные модели', free_models: ['llama3.2', 'mistral'], is_premium: false },
         ]);
       } finally {
         setLoading(false);

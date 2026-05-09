@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { apiFetch } from '../services/api';
 
 const providerIcons = {
   google: '🔵',
@@ -9,6 +10,14 @@ const providerIcons = {
   ollama: '🦙',
   gemini: '💎',
   gigachat: '🇷🇺',
+  mistral: '🌫️',
+  cohere: '🟣',
+  deepseek: '🔍',
+  xai: '🧮',
+  azure: '🔵',
+  together: '🤝',
+  fireworks: '🎆',
+  nvidia: '🟩',
 };
 
 const modelFilters = [
@@ -21,25 +30,56 @@ const modelFilters = [
 
 // Категории моделей
 const modelCategories = {
-  fast: ['gemini-2.0-flash', 'llama-3.1-70b-versatile', 'gpt-3.5-turbo', 'mixtral-8x7b-32768'],
-  smart: ['gpt-4', 'claude-3-sonnet', 'gemini-1.5-pro', 'llama-3.1-405b'],
-  cheap: ['gpt-3.5-turbo', 'gemini-2.0-flash', 'llama-3.1-70b-versatile'],
-  free: ['gemini-2.0-flash', 'llama-3.1-70b-versatile'],
+  fast: ['gemini-2.0-flash', 'llama-3.1-70b-versatile', 'gpt-4o-mini', 'mixtral-8x7b-32768'],
+  smart: ['gpt-4o', 'claude-3-5-sonnet', 'gemini-1.5-pro', 'llama-3.3-70b'],
+  cheap: ['gpt-4o-mini', 'gemini-2.0-flash', 'llama-3.1-8b-instant'],
+  free: ['gemini-2.0-flash', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant'],
 };
 
-// Статические модели по провайдерам (если БД не подключена)
-const staticModels = [
-  { id: 'gemini-2.0-flash', name: 'Google Gemini 2.0 Flash', provider: 'google', providerName: 'Google', icon: '🔵', isDefault: false },
-  { id: 'llama-3.1-70b-versatile', name: 'Llama 3.1 70B (Groq)', provider: 'groq', providerName: 'Groq', icon: '⚡', isDefault: false },
-  { id: 'gpt-4', name: 'OpenAI GPT-4', provider: 'openai', providerName: 'OpenAI', icon: '🟢', isDefault: false },
-  { id: 'gpt-3.5-turbo', name: 'OpenAI GPT-3.5 Turbo', provider: 'openai', providerName: 'OpenAI', icon: '🟢', isDefault: false },
-  { id: 'claude-3-5-sonnet', name: 'Anthropic Claude 3.5 Sonnet', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠', isDefault: false },
-  { id: 'claude-3-haiku', name: 'Anthropic Claude 3 Haiku', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠', isDefault: false },
+// Fallback модели (если API недоступен)
+const fallbackModels = [
+  { id: 'gemini-2.0-flash', name: 'Google Gemini 2.0 Flash', provider: 'google', providerName: 'Google', icon: '🔵' },
+  { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Groq)', provider: 'groq', providerName: 'Groq', icon: '⚡' },
+  { id: 'gpt-4o', name: 'OpenAI GPT-4o', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
+  { id: 'gpt-4o-mini', name: 'OpenAI GPT-4o Mini', provider: 'openai', providerName: 'OpenAI', icon: '🟢' },
+  { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
+  { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', provider: 'anthropic', providerName: 'Anthropic', icon: '🟠' },
 ];
 
 export function ModelSelector({ value, onChange, keys = [] }) {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [apiModels, setApiModels] = useState([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+
+  // Загрузка всех моделей через API
+  useEffect(() => {
+    loadAllModels();
+  }, []);
+
+  const loadAllModels = async () => {
+    setModelsLoading(true);
+    try {
+      const response = await apiFetch('/api/v1/models');
+      if (response.ok) {
+        const data = await response.json();
+        const models = (data.models || []).map(m => ({
+          id: m.id || m.name,
+          name: m.name || m.id,
+          provider: m.provider || m.id?.split('/')[0] || 'unknown',
+          providerName: m.provider || m.id?.split('/')[0] || 'Unknown',
+          icon: providerIcons[m.provider || m.id?.split('/')[0]] || '🔗',
+        }));
+        if (models.length > 0) {
+          setApiModels(models);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load models:', error);
+    } finally {
+      setModelsLoading(false);
+    }
+  };
 
   // Собираем модели из ключей (если БД подключена)
   const dbModels = keys
@@ -57,8 +97,8 @@ export function ModelSelector({ value, onChange, keys = [] }) {
     }))
     .filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
 
-  // Используем модели из БД или статические (если БД не подключена)
-  const availableModels = dbModels.length > 0 ? dbModels : staticModels;
+  // Приоритет: ключи пользователя → API → fallback
+  const availableModels = dbModels.length > 0 ? dbModels : (apiModels.length > 0 ? apiModels : fallbackModels);
 
   // Фильтруем модели
   const filteredModels = availableModels.filter(model => {

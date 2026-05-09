@@ -133,9 +133,7 @@ container = DependencyContainer()
 
 def register_dependencies() -> None:
     """Регистрирует все зависимости приложения"""
-    from memory.fact_memory_chroma import FactMemoryChroma
-    from memory.vector_memory_chroma import VectorMemoryChroma
-    from memory.smartcache_chroma import SmartCacheChroma
+
     from memory.episodic import EpisodicMemory
     from memory.rag import RAGMemory
     from memory.semantic import SemanticMemory
@@ -159,9 +157,6 @@ def register_dependencies() -> None:
     setup_logging(level="INFO", json_format=False)
     
     # Memory
-    container.register("fact_memory_chroma", lambda: FactMemoryChroma(), singleton=True)
-    container.register("vector_memory_chroma", lambda: VectorMemoryChroma(), singleton=True)
-    container.register("smartcache_chroma", lambda: SmartCacheChroma(), singleton=True)
     container.register("episodic_memory", lambda: EpisodicMemory(), singleton=True)
     container.register("rag_memory", lambda: RAGMemory(), singleton=True)
     container.register("semantic_memory", lambda: SemanticMemory(), singleton=True)
@@ -191,20 +186,6 @@ def register_dependencies() -> None:
 # ============================================================================
 # FastAPI Depends функции
 # ============================================================================
-
-def get_fact_memory_chroma() -> FactMemoryChroma:
-    """Получает FactMemoryChroma"""
-    return container.get("fact_memory_chroma")
-
-
-def get_vector_memory_chroma() -> VectorMemoryChroma:
-    """Получает VectorMemoryChroma"""
-    return container.get("vector_memory_chroma")
-
-
-def get_smartcache_chroma() -> SmartCacheChroma:
-    """Получает SmartCacheChroma"""
-    return container.get("smartcache_chroma")
 
 
 def get_episodic_memory() -> EpisodicMemory:

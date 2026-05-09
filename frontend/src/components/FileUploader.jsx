@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { Button } from './ui/Button';
+import { apiFetch } from '../services/api';
 
 export default function FileUploader({ 
   onUpload, 
@@ -66,18 +67,14 @@ export default function FileUploader({
     setError(null);
 
     try {
-      const token = localStorage.getItem('access_token');
       const uploadedFiles = [];
 
       for (const file of files) {
         const formData = new FormData();
         formData.append('file', file);
 
-        const result = await fetch('/api/v1/files/upload', {
+        const result = await apiFetch('/api/v1/files/upload', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
           body: formData,
         });
 

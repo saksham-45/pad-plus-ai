@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
 import { ProviderTester } from './ProviderTester';
+import { apiFetch } from '../services/api';
 
 const providerIcons = {
   google: '🔵',
@@ -23,10 +24,7 @@ export function ProviderManagement() {
 
   const fetchKeys = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/v1/keys', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await apiFetch('/api/v1/keys');
       
       if (response.ok) {
         const data = await response.json();
@@ -47,10 +45,8 @@ export function ProviderManagement() {
     if (!confirm('Удалить этот API ключ?')) return;
 
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/v1/keys/${keyId}`, {
+      const response = await apiFetch(`/api/v1/keys/${keyId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
       });
 
       if (response.ok) {
@@ -63,13 +59,9 @@ export function ProviderManagement() {
 
   const handleSetDefault = async (keyId) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/v1/keys/${keyId}`, {
+      const response = await apiFetch(`/api/v1/keys/${keyId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_default: true }),
       });
 
@@ -133,13 +125,11 @@ export function ProviderManagement() {
                   onSubmit={async (e) => {
                     e.preventDefault();
                     const formData = new FormData(e.target);
-                    const token = localStorage.getItem('access_token');
                     
-                    const response = await fetch('/api/v1/keys', {
+                    const response = await apiFetch('/api/v1/keys', {
                       method: 'POST',
                       headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`,
                       },
                       body: JSON.stringify({
                         provider: selectedProvider.id,

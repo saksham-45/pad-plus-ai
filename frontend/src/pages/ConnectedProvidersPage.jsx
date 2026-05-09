@@ -1,29 +1,25 @@
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { apiFetch } from '../services/api';
 
-// Все доступные провайдеры (для отображения имен)
+// Все доступные провайдеры (fallback для отображения имен)
 const allProviders = [
-  { id: 'openai', name: 'OpenAI', icon: '🟢' },
+  { id: 'gigachat', name: 'GigaChat', icon: '🇷🇺' },
   { id: 'google', name: 'Google Gemini', icon: '🔮' },
-  { id: 'anthropic', name: 'Anthropic Claude', icon: '🧠' },
   { id: 'groq', name: 'Groq', icon: '⚡' },
+  { id: 'openai', name: 'OpenAI', icon: '🟢' },
+  { id: 'anthropic', name: 'Anthropic Claude', icon: '🧠' },
   { id: 'openrouter', name: 'OpenRouter', icon: '🌐' },
-  { id: 'azure', name: 'Azure OpenAI', icon: '🔵' },
+  { id: 'mistral', name: 'Mistral AI', icon: '🌫️' },
   { id: 'cohere', name: 'Cohere', icon: '🟣' },
-  { id: 'huggingface', name: 'HuggingFace', icon: '🤗' },
-  { id: 'together', name: 'Together AI', icon: '🤝' },
-  { id: 'anyscale', name: 'Anyscale', icon: '🔷' },
-  { id: 'deepinfra', name: 'DeepInfra', icon: '🏗️' },
-  { id: 'replicate', name: 'Replicate', icon: '🔄' },
-  { id: 'ollama', name: 'Ollama (Local)', icon: '🦙' },
   { id: 'deepseek', name: 'DeepSeek', icon: '🔍' },
   { id: 'xai', name: 'xAI Grok', icon: '🧮' },
-  { id: 'mistral', name: 'Mistral AI', icon: '🌫️' },
-  { id: 'nvidia', name: 'NVIDIA NIM', icon: '🟩' },
+  { id: 'ollama', name: 'Ollama (Local)', icon: '🦙' },
+  { id: 'azure', name: 'Azure OpenAI', icon: '🔵' },
+  { id: 'together', name: 'Together AI', icon: '🤝' },
   { id: 'fireworks', name: 'Fireworks', icon: '🎆' },
-  { id: 'gigachat', name: 'GigaChat', icon: '🇷🇺' },
-  { id: 'yandex', name: 'YandexGPT', icon: '🟡' },
+  { id: 'nvidia', name: 'NVIDIA NIM', icon: '🟩' },
 ];
 
 export default function ConnectedProvidersPage() {
@@ -39,17 +35,14 @@ export default function ConnectedProvidersPage() {
 
   const fetchKeys = async () => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/v1/keys?offset=0&limit=100', {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await apiFetch('/api/v1/keys?offset=0&limit=100');
 
       if (response.ok) {
         const result = await response.json();
         const keysData = result.data || result;
         const arr = Array.isArray(keysData) ? keysData : [];
         setKeys(arr);
-        return arr;  // Возвращаем данные
+        return arr;
       }
     } catch (error) {
       console.error('Failed to fetch keys:', error);
@@ -82,10 +75,7 @@ export default function ConnectedProvidersPage() {
 
   const loadModels = async (providerId) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/v1/providers/${providerId}/models`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const response = await apiFetch(`/api/v1/providers/${providerId}/models`);
       if (response.ok) {
         const data = await response.json();
         setAvailableModels(data.models || []);
@@ -101,15 +91,11 @@ export default function ConnectedProvidersPage() {
     if (!editingKey) return;
 
     try {
-      const token = localStorage.getItem('access_token');
       console.log('💾 Saving model:', editModel, 'for key:', editingKey.id);
       
-      const response = await fetch(`/api/v1/keys/${editingKey.id}`, {
+      const response = await apiFetch(`/api/v1/keys/${editingKey.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model_preference: editModel,
         }),
@@ -140,10 +126,8 @@ export default function ConnectedProvidersPage() {
     if (!confirm('Удалить этот API ключ?')) return;
     
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/v1/keys/${keyId}`, {
+      const response = await apiFetch(`/api/v1/keys/${keyId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
       });
       
       if (response.ok) {
@@ -159,10 +143,8 @@ export default function ConnectedProvidersPage() {
   // Обработчик установки по умолчанию
   const handleSetDefault = async (keyId) => {
     try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/v1/keys/${keyId}/set-default`, {
+      const response = await apiFetch(`/api/v1/keys/${keyId}/set-default`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
       });
 
       if (response.ok) {

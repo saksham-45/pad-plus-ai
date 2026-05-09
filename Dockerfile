@@ -23,7 +23,7 @@ COPY . .
 RUN mkdir -p data
 
 # Экспортируем порт
-EXPOSE 8000
+EXPOSE 8080
 
 # Команда запуска
 CMD ["python", "start_server.py"]
