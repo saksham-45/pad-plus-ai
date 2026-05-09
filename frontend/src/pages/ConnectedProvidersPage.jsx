@@ -34,18 +34,24 @@ export default function ConnectedProvidersPage() {
   }, []);
 
   const fetchKeys = async () => {
+    console.log('🔄 ConnectedProvidersPage.fetchKeys() called');
     try {
       const response = await apiFetch('/api/v1/keys?offset=0&limit=100');
+      console.log('🔄 fetchKeys response status:', response.status);
 
       if (response.ok) {
         const result = await response.json();
+        console.log('🔄 fetchKeys result:', result);
         const keysData = result.data || result;
         const arr = Array.isArray(keysData) ? keysData : [];
+        console.log('🔄 fetchKeys keys count:', arr.length);
         setKeys(arr);
         return arr;
+      } else {
+        console.warn('🔄 fetchKeys failed:', response.status);
       }
     } catch (error) {
-      console.error('Failed to fetch keys:', error);
+      console.error('🔄 Failed to fetch keys:', error);
       setKeys([]);
     } finally {
       setLoading(false);

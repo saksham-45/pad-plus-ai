@@ -156,16 +156,24 @@ export default function ProvidersPage() {
   };
 
   const fetchKeys = async () => {
+    console.log('🔄 ProvidersPage.fetchKeys() called');
     try {
       const response = await apiFetch('/api/v1/keys?offset=0&limit=100');
+      console.log('🔄 fetchKeys response status:', response.status);
 
       if (response.ok) {
         const result = await response.json();
+        console.log('🔄 fetchKeys result:', result);
         const keysData = result.data || result;
-        setKeys(Array.isArray(keysData) ? keysData : []);
+        const arr = Array.isArray(keysData) ? keysData : [];
+        console.log('🔄 fetchKeys keys count:', arr.length);
+        setKeys(arr);
+      } else {
+        console.warn('🔄 fetchKeys failed:', response.status);
+        setKeys([]);
       }
     } catch (error) {
-      console.error('Failed to fetch keys:', error);
+      console.error('🔄 Failed to fetch keys:', error);
       setKeys([]);
     } finally {
       setLoading(false);
@@ -278,15 +286,20 @@ export default function ProvidersPage() {
 
   // Обработчик добавления ключа
   const handleAddKey = async (formData) => {
+    console.log('🔄 handleAddKey called with:', formData);
     try {
       const response = await apiFetch('/api/v1/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
+      console.log('🔄 handleAddKey response status:', response.status);
       if (response.ok) {
-        const newKey = await response.json();  // Получаем ID нового ключа
+        const newKey = await response.json();
+        console.log('🔄 handleAddKey newKey:', newKey);
+        console.log('🔄 handleAddKey calling fetchKeys...');
         await fetchKeys();
+        console.log('🔄 handleAddKey fetchKeys done');
         setShowAddForm(false);
         setSelectedProvider(null);
         if (selectedProvider) {
@@ -308,9 +321,13 @@ export default function ProvidersPage() {
             }
           }));
         }
+      } else {
+        const errText = await response.text();
+        console.error('🔄 handleAddKey error response:', errText);
+        alert('Ошибка при подключении: ' + response.status);
       }
     } catch (err) {
-      console.error('Failed to add key:', err);
+      console.error('🔄 Failed to add key:', err);
       alert('Ошибка при подключении провайдера');
     }
   };
