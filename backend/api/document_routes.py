@@ -23,7 +23,7 @@ import os
 
 logger = logging.getLogger("padplus")
 
-from core.supabase_client import get_supabase
+from core.supabase_client import get_supabase, get_supabase_service
 
 router = APIRouter(prefix="/api/v1", tags=["Document Management"])
 
@@ -113,20 +113,15 @@ async def upload_document(
     supabase = get_supabase()
     user_id = current_user["id"]
     
-    # Проверка типа файла
-    allowed_types = [
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/msword",
-        "text/plain",
-        "text/markdown",
-        "text/csv",
-    ]
+    # Проверка типа файла (по расширению если MIME type не определён)
+    allowed_extensions = [".pdf", ".docx", ".doc", ".txt", ".md", ".csv", ".json", ".xml", ".html"]
+    file_extension = "." + file.filename.split(".")[-1].lower() if "." in file.filename else ""
     
-    if file.content_type not in allowed_types:
+    # Проверяем по расширению если MIME type не определён или не точный
+    if file_extension not in allowed_extensions:
         raise HTTPException(
             status_code=400,
-            detail=f"Недопустимый тип файла: {file.content_type}. Разрешены: PDF, DOCX, TXT, MD"
+            detail=f"Недопустимый тип файла: {file.filename}. Разрешены: PDF, DOCX, DOC, TXT, MD, CSV, JSON, XML, HTML"
         )
     
     # Проверка размера (50MB)
@@ -144,15 +139,23 @@ async def upload_document(
         file_path = f"documents/{user_id}/{file_name}"
         
         # Загружаем в Supabase Storage
-        supabase.storage.from_bucket("documents")\
-            .upload(file_path, content, {"content-type": file.content_type})
+        try:
+            supabase.storage.from_("documents")\
+                .upload(file_path, content, {"content-type": file.content_type or "application/octet-stream"})
+        except Exception as storage_error:
+            logger.error(f"Storage upload error: {storage_error}")
+            # Bucket должен быть создан вручную в Supabase Dashboard
+            raise HTTPException(status_code=500, detail=f"Ошибка загрузки в хранилище: bucket 'documents' не найден. Создайте его в Supabase Dashboard → Storage")
         
         # Получаем публичную ссылку
-        file_url = supabase.storage.from_bucket("documents")\
-            .get_public_url(file_path)
+        file_url = supabase.storage.from_("documents").get_public_url(file_path)
         
-        # Сохраняем метаданные в БД
-        result = supabase.table("documents")\
+        # Сохраняем метаданные в БД (через service_role для обхода RLS)
+        db = get_supabase_service()
+        if not db:
+            raise HTTPException(status_code=500, detail="БД не подключена (service key)")
+        
+        result = db.table("documents")\
             .insert({
                 "id": document_id,
                 "user_id": user_id,
@@ -198,11 +201,14 @@ async def list_documents(
     status: Optional[str] = None
 ):
     """Список документов пользователя"""
-    supabase = get_supabase()
+    db = get_supabase_service()
+    if not db:
+        raise HTTPException(status_code=500, detail="БД не подключена")
+    
     user_id = current_user["id"]
     
     # Строим запрос
-    query = supabase.table("documents")\
+    query = db.table("documents")\
         .select("*", count="exact")\
         .eq("user_id", user_id)
     
@@ -243,11 +249,14 @@ async def get_document_stats(
     current_user: dict = Depends(get_current_user)
 ):
     """Статистика документов"""
-    supabase = get_supabase()
+    db = get_supabase_service()
+    if not db:
+        raise HTTPException(status_code=500, detail="БД не подключена")
+    
     user_id = current_user["id"]
     
     # Общая статистика
-    total_result = supabase.table("documents")\
+    total_result = db.table("documents")\
         .select("id", count="exact")\
         .eq("user_id", user_id)\
         .execute()
@@ -257,7 +266,7 @@ async def get_document_stats(
     # Статистика по статусам
     status_stats = {}
     for status in ["pending", "processing", "completed", "failed"]:
-        result = supabase.table("documents")\
+        result = db.table("documents")\
             .select("id", count="exact")\
             .eq("user_id", user_id)\
             .eq("status", status)\
@@ -265,14 +274,14 @@ async def get_document_stats(
         status_stats[status] = result.count if result.count else 0
     
     # Общий размер
-    size_result = supabase.table("documents")\
+    size_result = db.table("documents")\
         .select("file_size")\
         .eq("user_id", user_id)\
         .execute()
     total_size = sum(doc.get("file_size", 0) for doc in size_result.data)
     
     # Количество коллекций
-    collections_result = supabase.table("document_collections")\
+    collections_result = db.table("document_collections")\
         .select("id", count="exact")\
         .eq("user_id", user_id)\
         .execute()
@@ -293,10 +302,13 @@ async def get_document(
     current_user: dict = Depends(get_current_user)
 ):
     """Получение деталей документа"""
-    supabase = get_supabase()
+    db = get_supabase_service()
+    if not db:
+        raise HTTPException(status_code=500, detail="БД не подключена")
+    
     user_id = current_user["id"]
     
-    result = supabase.table("documents")\
+    result = db.table("documents")\
         .select("*")\
         .eq("id", document_id)\
         .eq("user_id", user_id)\
@@ -325,11 +337,15 @@ async def delete_document(
     current_user: dict = Depends(get_current_user)
 ):
     """Удаление документа"""
-    supabase = get_supabase()
+    db = get_supabase_service()
+    storage = get_supabase()
+    if not db or not storage:
+        raise HTTPException(status_code=500, detail="БД или Storage не подключены")
+    
     user_id = current_user["id"]
     
     # Получаем документ для удаления файла
-    doc_result = supabase.table("documents")\
+    doc_result = db.table("documents")\
         .select("file_path")\
         .eq("id", document_id)\
         .eq("user_id", user_id)\
@@ -342,10 +358,10 @@ async def delete_document(
     
     # Удаляем файл из хранилища
     if file_path:
-        supabase.storage.from_bucket("documents").remove([file_path])
+        storage.storage.from_("documents").remove([file_path])
     
     # Удаляем запись из БД
-    supabase.table("documents")\
+    db.table("documents")\
         .delete()\
         .eq("id", document_id)\
         .eq("user_id", user_id)\
@@ -362,7 +378,10 @@ async def update_document(
     current_user: dict = Depends(get_current_user)
 ):
     """Обновление метаданных документа"""
-    supabase = get_supabase()
+    db = get_supabase_service()
+    if not db:
+        raise HTTPException(status_code=500, detail="БД не подключена")
+    
     user_id = current_user["id"]
     
     update_data = {}
@@ -374,7 +393,7 @@ async def update_document(
     if not update_data:
         raise HTTPException(status_code=400, detail="Нет данных для обновления")
     
-    result = supabase.table("documents")\
+    result = db.table("documents")\
         .update(update_data)\
         .eq("id", document_id)\
         .eq("user_id", user_id)\
@@ -383,7 +402,7 @@ async def update_document(
     if not result.data:
         raise HTTPException(status_code=404, detail="Документ не найден")
     
-    return {"success": True, "message": "Документ обновлёn"}
+    return {"success": True, "message": "Документ обновлён"}
 
 
 # ============================================================================
@@ -395,10 +414,13 @@ async def list_collections(
     current_user: dict = Depends(get_current_user)
 ):
     """Список коллекций пользователя"""
-    supabase = get_supabase()
+    db = get_supabase_service()
+    if not db:
+        raise HTTPException(status_code=500, detail="БД не подключена")
+    
     user_id = current_user["id"]
     
-    result = supabase.table("document_collections")\
+    result = db.table("document_collections")\
         .select("*")\
         .eq("user_id", user_id)\
         .order("created_at", desc=True)\
@@ -407,7 +429,7 @@ async def list_collections(
     collections = []
     for coll in result.data:
         # Считаем количество документов в коллекции
-        doc_count = supabase.table("documents")\
+        doc_count = db.table("documents")\
             .select("id", count="exact")\
             .eq("collection_id", coll["id"])\
             .execute()
@@ -429,12 +451,15 @@ async def create_collection(
     current_user: dict = Depends(get_current_user)
 ):
     """Создание коллекции"""
-    supabase = get_supabase()
+    db = get_supabase_service()
+    if not db:
+        raise HTTPException(status_code=500, detail="БД не подключена")
+    
     user_id = current_user["id"]
     
     collection_id = str(uuid.uuid4())
     
-    result = supabase.table("document_collections")\
+    result = db.table("document_collections")\
         .insert({
             "id": collection_id,
             "user_id": user_id,
@@ -460,11 +485,14 @@ async def delete_collection(
     current_user: dict = Depends(get_current_user)
 ):
     """Удаление коллекции"""
-    supabase = get_supabase()
+    db = get_supabase_service()
+    if not db:
+        raise HTTPException(status_code=500, detail="БД не подключена")
+    
     user_id = current_user["id"]
     
     # Проверяем, что коллекция принадлежит пользователю
-    coll_result = supabase.table("document_collections")\
+    coll_result = db.table("document_collections")\
         .select("id")\
         .eq("id", collection_id)\
         .eq("user_id", user_id)\
@@ -474,16 +502,10 @@ async def delete_collection(
         raise HTTPException(status_code=404, detail="Коллекция не найдена")
     
     # Удаляем коллекцию (документы остаются, но теряют связь с коллекцией)
-    supabase.table("document_collections")\
+    db.table("document_collections")\
         .delete()\
         .eq("id", collection_id)\
         .eq("user_id", user_id)\
-        .execute()
-    
-    # Сбрасываем collection_id у документов
-    supabase.table("documents")\
-        .update({"collection_id": None})\
-        .eq("collection_id", collection_id)\
         .execute()
     
     return {"success": True, "message": "Коллекция удалена"}

@@ -21,14 +21,9 @@ from core.config_manager import get_config
 
 logger = logging.getLogger("padplus.cache")
 
-# Опциональный импорт aioredis (может не работать на Python 3.14+)
-try:
-    import aioredis
-    HAS_AIOREDIS = True
-except (ImportError, TypeError):
-    aioredis = None
-    HAS_AIOREDIS = False
-    logger.warning("aioredis недоступен, используем только in-memory кэш")
+# Опциональный импорт redis.asyncio
+from redis.asyncio import Redis as AsyncRedis
+HAS_REDIS_ASYNC = True
 
 
 class CacheManager:
@@ -63,8 +58,8 @@ class CacheManager:
 
     async def connect(self):
         """Подключается к Redis"""
-        if not HAS_AIOREDIS:
-            logger.warning("⚠️ aioredis недоступен, используем только in-memory кэш")
+        if not HAS_REDIS_ASYNC:
+            logger.warning("⚠️ redis.asyncio недоступен, используем только in-memory кэш")
             logger.info("💡 Для включения Redis установите: pip install redis")
             return
         
@@ -77,7 +72,7 @@ class CacheManager:
             
             logger.info(f"🔌 Подключение к Redis: {redis_host}:{redis_port}...")
             
-            self.redis = await aioredis.from_url(
+            self.redis = await AsyncRedis.from_url(
                 self.redis_url,
                 encoding="utf-8",
                 decode_responses=True,

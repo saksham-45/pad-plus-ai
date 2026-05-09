@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { motion } from 'framer-motion';
+import { apiFetch } from '../../services/api';
 
 // Метрики системных ресурсов
 const resourceMetrics = [
@@ -74,7 +75,7 @@ function ResourceIndicator({ metric, value, max = 100 }) {
             status === 'critical' ? 'text-red-500' : 
             status === 'warning' ? 'text-yellow-500' : 'text-green-500'
           }`}>
-            {value.toFixed(1)}{metric.unit}
+            {typeof value === 'number' ? value.toFixed(1) : value}{metric.unit}
           </span>
           {status === 'critical' && (
             <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
@@ -162,7 +163,7 @@ export function SystemResourcesWidget() {
   // Загрузка данных о ресурсах
   const fetchResources = async () => {
     try {
-      const response = await fetch('/api/v1/metrics/system');
+      const response = await apiFetch('/api/v1/metrics/system');
       if (response.ok) {
         const data = await response.json();
         setResources({
@@ -200,7 +201,7 @@ export function SystemResourcesWidget() {
   
   useEffect(() => {
     fetchResources();
-    const interval = setInterval(fetchResources, 3000);
+    const interval = setInterval(fetchResources, 10000);
     return () => clearInterval(interval);
   }, []);
   

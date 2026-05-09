@@ -9,6 +9,7 @@ import { KnowledgeWidget } from './widgets/KnowledgeWidget';
 import { SystemResourcesWidget } from './widgets/SystemResourcesWidget';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
+import { apiFetch } from '../services/api';
 
 // Оптимизированная раскладка - все в одной компактной области
 const widgetGrid = [
@@ -22,12 +23,12 @@ const widgetGrid = [
   { id: 'logs', col: 'col-span-6' },
 ];
 
-// KPI карточки статуса системы
-const systemStatusItems = [
+// KPI карточки статуса системы (Model будет динамическим)
+const getSystemStatusItems = (mindState) => [
   { label: 'System', value: 'Online', color: 'text-green-500' },
   { label: 'Memory', value: 'Active', color: 'text-blue-500' },
   { label: 'PAD State', value: 'Stable', color: 'text-purple-500' },
-  { label: 'Model', value: 'GPT-4', color: 'text-yellow-500' },
+  { label: 'Model', value: mindState?.model?.name || 'Auto', color: 'text-yellow-500' },
 ];
 
 // Этапы обработки
@@ -49,7 +50,7 @@ export default function Dashboard() {
   // Загрузка состояния системы
   const fetchMindState = useCallback(async () => {
     try {
-      const response = await fetch('/api/v1/mind-state');
+      const response = await apiFetch('/api/v1/mind-state');
       if (response.ok) {
         const data = await response.json();
         setMindState(data);
@@ -62,7 +63,7 @@ export default function Dashboard() {
   // Загрузка логов
   const fetchLogs = useCallback(async () => {
     try {
-      const response = await fetch('/api/v1/events/recent?limit=20');
+      const response = await apiFetch('/api/v1/events/recent?limit=20');
       if (response.ok) {
         const data = await response.json();
         if (data.events) {
@@ -87,7 +88,7 @@ export default function Dashboard() {
     
     const interval = setInterval(() => {
       fetchMindState();
-    }, 5000);
+    }, 10000);
     
     return () => clearInterval(interval);
   }, [fetchMindState, fetchLogs]);
@@ -204,7 +205,7 @@ export default function Dashboard() {
 
         {/* KPI карточки */}
         <div className="col-span-12 grid grid-cols-4 gap-2">
-          {systemStatusItems.map((item) => (
+          {getSystemStatusItems(mindState).map((item) => (
             <Card key={item.label} className="bg-[#111827] border border-[#1F2937]">
               <CardContent className="p-2">
                 <p className="text-xs text-gray-400">{item.label}</p>
