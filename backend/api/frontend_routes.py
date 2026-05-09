@@ -398,129 +398,130 @@ async def refresh_token(refresh_token: str = Header(..., alias="X-Refresh-Token"
 
 @router.get("/providers", response_model=List[ProviderResponse])
 async def list_providers():
-    """Список доступных провайдеров — актуальный каталог LiteLLM"""
-    return [
-        {
-            "id": "gigachat",
-            "name": "GigaChat",
-            "description": "Модели GigaChat от Сбера (OAuth)",
-            "free_models": ["gigachat/GigaChat-2-Lite"],
-            "website": "https://gigachat.ru/",
-            "is_premium": False
+    """
+    Список доступных провайдеров — строится из LiteLLM model_cost
+    + fallback на встроенный каталог
+    """
+    import litellm
+    from runtime.litellm_service import get_litellm_service
+
+    # Метаданные провайдеров
+    PROVIDER_META = {
+        "gigachat": {
+            "name": "GigaChat", "description": "Модели GigaChat от Сбера (OAuth)",
+            "website": "https://gigachat.ru/", "is_premium": False
         },
-        {
-            "id": "google",
-            "name": "Google AI Studio",
-            "description": "Модели Gemini от Google",
-            "free_models": ["gemini-2.0-flash", "gemini-2.0-flash-lite"],
-            "website": "https://aistudio.google.com",
-            "is_premium": False
+        "google": {
+            "name": "Google AI Studio", "description": "Модели Gemini от Google",
+            "website": "https://aistudio.google.com", "is_premium": False
         },
-        {
-            "id": "groq",
-            "name": "Groq",
-            "description": "Быстрые открытые модели (Llama, Mistral, Gemma)",
-            "free_models": ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant"],
-            "website": "https://console.groq.com",
-            "is_premium": False
+        "groq": {
+            "name": "Groq", "description": "Быстрые открытые модели (Llama, Mistral, Gemma)",
+            "website": "https://console.groq.com", "is_premium": False
         },
-        {
-            "id": "openai",
-            "name": "OpenAI",
-            "description": "Модели GPT-4o, GPT-4o-mini, o1, o3-mini",
-            "free_models": [],
-            "website": "https://platform.openai.com",
-            "is_premium": True
+        "openai": {
+            "name": "OpenAI", "description": "Модели GPT-4o, GPT-4o-mini, o1, o3-mini",
+            "website": "https://platform.openai.com", "is_premium": True
         },
-        {
-            "id": "anthropic",
-            "name": "Anthropic",
-            "description": "Модели Claude 3.5 Sonnet, Haiku, Opus",
-            "free_models": [],
-            "website": "https://console.anthropic.com",
-            "is_premium": True
+        "anthropic": {
+            "name": "Anthropic", "description": "Модели Claude 3.5 Sonnet, Haiku, Opus",
+            "website": "https://console.anthropic.com", "is_premium": True
         },
-        {
-            "id": "openrouter",
-            "name": "OpenRouter",
-            "description": "Единый API для 100+ моделей (Claude, GPT, Llama и др.)",
-            "free_models": [],
-            "website": "https://openrouter.ai",
-            "is_premium": True
+        "openrouter": {
+            "name": "OpenRouter", "description": "Единый API для 100+ моделей",
+            "website": "https://openrouter.ai", "is_premium": True
         },
-        {
-            "id": "mistral",
-            "name": "Mistral AI",
-            "description": "Модели Mistral Large, Medium, Small",
-            "free_models": [],
-            "website": "https://console.mistral.ai",
-            "is_premium": True
+        "mistral": {
+            "name": "Mistral AI", "description": "Модели Mistral Large, Medium, Small",
+            "website": "https://console.mistral.ai", "is_premium": True
         },
-        {
-            "id": "cohere",
-            "name": "Cohere",
-            "description": "Модели Command R+, Command R",
-            "free_models": [],
-            "website": "https://cohere.com",
-            "is_premium": True
+        "cohere": {
+            "name": "Cohere", "description": "Модели Command R+, Command R",
+            "website": "https://cohere.com", "is_premium": True
         },
-        {
-            "id": "deepseek",
-            "name": "DeepSeek",
-            "description": "Модели DeepSeek Chat, Coder, Reasoner",
-            "free_models": ["deepseek-chat"],
-            "website": "https://platform.deepseek.com",
-            "is_premium": False
+        "deepseek": {
+            "name": "DeepSeek", "description": "Модели DeepSeek Chat, Coder, Reasoner",
+            "website": "https://platform.deepseek.com", "is_premium": False
         },
-        {
-            "id": "xai",
-            "name": "xAI Grok",
-            "description": "Модели Grok-2, Grok-2 Vision",
-            "free_models": [],
-            "website": "https://x.ai",
-            "is_premium": True
+        "xai": {
+            "name": "xAI Grok", "description": "Модели Grok-2, Grok-2 Vision",
+            "website": "https://x.ai", "is_premium": True
         },
-        {
-            "id": "ollama",
-            "name": "Ollama (Local)",
-            "description": "Локальные модели (Llama, Mistral, CodeLlama)",
-            "free_models": ["llama3.2", "mistral", "codellama"],
-            "website": "https://ollama.ai",
-            "is_premium": False
+        "ollama": {
+            "name": "Ollama (Local)", "description": "Локальные модели (Llama, Mistral, CodeLlama)",
+            "website": "https://ollama.ai", "is_premium": False
         },
-        {
-            "id": "azure",
-            "name": "Azure OpenAI",
-            "description": "Модели GPT-4, GPT-3.5 через Azure",
-            "free_models": [],
-            "website": "https://azure.microsoft.com",
-            "is_premium": True
+        "azure": {
+            "name": "Azure OpenAI", "description": "Модели GPT-4, GPT-3.5 через Azure",
+            "website": "https://azure.microsoft.com", "is_premium": True
         },
-        {
-            "id": "together",
-            "name": "Together AI",
-            "description": "Открытые модели (Llama 3, Mixtral)",
-            "free_models": [],
-            "website": "https://together.ai",
-            "is_premium": True
+        "together": {
+            "name": "Together AI", "description": "Открытые модели (Llama 3, Mixtral)",
+            "website": "https://together.ai", "is_premium": True
         },
-        {
-            "id": "fireworks",
-            "name": "Fireworks",
-            "description": "Быстрые открытые модели",
-            "free_models": [],
-            "website": "https://fireworks.ai",
-            "is_premium": True
+        "fireworks": {
+            "name": "Fireworks", "description": "Быстрые открытые модели",
+            "website": "https://fireworks.ai", "is_premium": True
         },
-        {
-            "id": "nvidia",
-            "name": "NVIDIA NIM",
-            "description": "Модели через NVIDIA Inference Microservices",
-            "free_models": [],
-            "website": "https://nvidia.com/nim",
-            "is_premium": True
+        "nvidia": {
+            "name": "NVIDIA NIM", "description": "Модели через NVIDIA Inference Microservices",
+            "website": "https://nvidia.com/nim", "is_premium": True
         },
-    ]
+        "perplexity": {
+            "name": "Perplexity", "description": "Модели для поиска и ответов",
+            "website": "https://perplexity.ai", "is_premium": True
+        },
+        "ai21": {
+            "name": "AI21 Labs", "description": "Модели Jamba, Jurassic",
+            "website": "https://studio.ai21.com", "is_premium": True
+        },
+    }
+        
+    # Собираем провайдеров из litellm.model_cost
+    providers_map = {}
+    model_cost = getattr(litellm, 'model_cost', {})
+
+    if model_cost:
+        for model_name, info in model_cost.items():
+            if '/' not in model_name:
+                continue
+            prov = model_name.split('/')[0]
+            if prov not in PROVIDER_META:
+                continue
+            if prov not in providers_map:
+                providers_map[prov] = {
+                    "id": prov,
+                    **PROVIDER_META[prov],
+                    "free_models": [],
+                }
+            # Проверяем бесплатность
+            input_cost = info.get('input_cost_per_token', 0)
+            if input_cost == 0 and model_name not in providers_map[prov]["free_models"]:
+                providers_map[prov]["free_models"].append(model_name)
+
+    # Если LiteLLM не отдал данные — используем fallback
+    if not providers_map:
+        litellm_service = get_litellm_service()
+        fallback = litellm_service._get_fallback_models()
+        for prov, models in fallback.items():
+            if prov not in PROVIDER_META:
+                continue
+            providers_map[prov] = {
+                "id": prov,
+                **PROVIDER_META[prov],
+                "free_models": [m["id"] for m in models[:3]],
+            }
+
+    # Если и fallback пуст — возвращаем статический список
+    if not providers_map:
+        for prov, meta in PROVIDER_META.items():
+            providers_map[prov] = {
+                "id": prov,
+                **meta,
+                "free_models": [],
+            }
+
+    return list(providers_map.values())
         
 
 # ============================================================================
