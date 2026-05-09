@@ -649,7 +649,8 @@ async def create_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Добавление API ключа"""
-    supabase = get_supabase()
+    from core.supabase_client import get_supabase_service
+    supabase = get_supabase_service()
     encryptor = get_encryptor()
     user_id = str(current_user["id"])  # Преобразуем UUID в строку
 
@@ -711,7 +712,8 @@ async def delete_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Удаление API ключа"""
-    supabase = get_supabase()
+    from core.supabase_client import get_supabase_service
+    supabase = get_supabase_service()
     user_id = str(current_user["id"])  # Преобразуем UUID в строку
     
     result = supabase.table("user_api_keys")\
@@ -732,7 +734,8 @@ async def set_default_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Установка ключа по умолчанию"""
-    supabase = get_supabase()
+    from core.supabase_client import get_supabase_service
+    supabase = get_supabase_service()
     user_id = str(current_user["id"])  # Преобразуем UUID в строку
     
     # Сначала сбрасываем все ключи пользователя
@@ -761,7 +764,8 @@ async def update_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Обновление API ключа (модель, имя)"""
-    supabase = get_supabase()
+    from core.supabase_client import get_supabase_service
+    supabase = get_supabase_service()
     user_id = current_user["id"]
     
     # Собираем только переданные поля
