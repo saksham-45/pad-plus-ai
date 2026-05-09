@@ -461,20 +461,20 @@ export default function ProvidersPage() {
           <Card className="bg-[#111827] border border-[#1F2937]">
             <CardContent className="p-4">
               <p className="text-xs text-gray-400">Available</p>
-              <p className="text-2xl font-bold text-white">{allProviders.length - connectedCount}</p>
+              <p className="text-2xl font-bold text-white">{fallbackProviders.length - connectedCount}</p>
             </CardContent>
           </Card>
           <Card className="bg-[#111827] border border-[#1F2937]">
             <CardContent className="p-4">
               <p className="text-xs text-gray-400">Total Providers</p>
-              <p className="text-2xl font-bold text-white">{allProviders.length}</p>
+              <p className="text-2xl font-bold text-white">{fallbackProviders.length}</p>
             </CardContent>
           </Card>
           <Card className="bg-[#111827] border border-[#1F2937]">
             <CardContent className="p-4">
               <p className="text-xs text-gray-400">Active Model</p>
               <p className="text-lg font-bold text-green-500">
-                {activeModel ? (allProviders.find(p => p.id === activeModel.provider)?.name || 'Custom') : 'None'}
+                {activeModel ? (fallbackProviders.find(p => p.id === activeModel.provider)?.name || 'Custom') : 'None'}
               </p>
             </CardContent>
           </Card>
@@ -630,7 +630,7 @@ export default function ProvidersPage() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <Card className="bg-[#111827] border border-[#1F2937] w-full max-w-md mx-4">
               <CardHeader>
-                <CardTitle>Edit {allProviders.find(p => p.id === editingKey.provider)?.name || editingKey.provider}</CardTitle>
+                <CardTitle>Edit {fallbackProviders.find(p => p.id === editingKey.provider)?.name || editingKey.provider}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
