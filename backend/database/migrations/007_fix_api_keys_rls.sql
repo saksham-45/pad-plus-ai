@@ -2,8 +2,8 @@
 -- PAD+ AI v4.0 — Исправление RLS для user_api_keys
 -- ============================================================================
 -- Исправляет проблему: "new row violates row-level security policy"
--- Причина: UPDATE политика требует WITH CHECK для проверки новых значений
--- Решение: добавить WITH CHECK условие для UPDATE политики
+-- Причина: несоответствие типов auth.uid() и user_id при сравнении
+-- Решение: явное приведение типов в обеих сторонах сравнения (::text)
 -- ============================================================================
 
 -- Включаем RLS если отключен
@@ -15,29 +15,31 @@ DROP POLICY IF EXISTS "Users can view own keys" ON public.user_api_keys;
 DROP POLICY IF EXISTS "Users can update own keys" ON public.user_api_keys;
 DROP POLICY IF EXISTS "Users can delete own keys" ON public.user_api_keys;
 
--- Создаем новые политики с WITH CHECK для UPDATE
--- Это гарантирует, что обновленная строка соответствует условиям доступа
+-- Создаем новые политики с явным приведением типов UUID -> text
+-- Это гарантирует корректное сравнение в Supabase
 CREATE POLICY "Users can insert own keys"
     ON public.user_api_keys FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK ((auth.uid())::text = (user_id)::text);
 
 CREATE POLICY "Users can view own keys"
     ON public.user_api_keys FOR SELECT
-    USING (auth.uid() = user_id);
+    USING ((auth.uid())::text = (user_id)::text);
 
 CREATE POLICY "Users can update own keys"
     ON public.user_api_keys FOR UPDATE
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
+    USING ((auth.uid())::text = (user_id)::text)
+    WITH CHECK ((auth.uid())::text = (user_id)::text);
 
 CREATE POLICY "Users can delete own keys"
     ON public.user_api_keys FOR DELETE
-    USING (auth.uid() = user_id);
+    USING ((auth.uid())::text = (user_id)::text);
 
--- Убеждаемся, что authenticated пользователи имеют нужные права
+-- Убедимся, что authenticated пользователи имеют все нужные права
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_api_keys TO authenticated;
 
 -- Примечание:
--- auth.uid() возвращает UUID текущего аутентифицированного пользователя
+-- auth.uid() возвращает UUID из auth.users таблицы Supabase
+-- user_id в user_api_keys имеет тип UUID
+-- Приведение к text (::text) необходимо для корректной работы сравнения в Supabase
 -- USING - проверяется доступность строк для операции
 -- WITH CHECK - проверяется, что результат операции соответствует условиям RLS

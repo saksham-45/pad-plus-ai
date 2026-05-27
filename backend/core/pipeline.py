@@ -391,8 +391,7 @@ class PipelineExecutor:
         context: Dict = None,
         session_id: str = None,
         api_key: Optional[str] = None,      # === ФАЗА 1: API ключ пользователя ===
-        provider: Optional[str] = None,     # === ФАЗА 1: Провайдер пользователя ===
-        model: Optional[str] = None       # === ФАЗА 1: Модель пользователя ===
+        provider: Optional[str] = None      # === ФАЗА 1: Провайдер пользователя ===
     ) -> PipelineResult:
         """
         Выполняет полный пайплайн обработки
@@ -723,12 +722,12 @@ class PipelineExecutor:
             # === 7.2 GENERATE RESPONSE через LiteLLM ===
             # === ФАЗА 1: ИСПОЛЬЗУЕМ API КЛЮЧ ПОЛЬЗОВАТЕЛЯ ===
             
-# Проверяем, передан ли ключ напрямую в Pipeline
+            # Проверяем, передан ли ключ напрямую в Pipeline
             user_api_key = api_key  # Из параметра метода execute()
             user_provider = provider  # Из параметра метода execute()
-            user_model = model  # Из параметра метода execute()
-            
-            logger.info(f"🔑 Pipeline: api_key_len={len(user_api_key) if user_api_key else 0}, provider={user_provider}, model={user_model}")
+            model = None
+
+            logger.info(f"🔑 Pipeline: api_key_len={len(user_api_key) if user_api_key else 0}, provider={user_provider}, model={model}")
 
             # Если ключ не передан, пытаемся получить из сессии
             if not user_api_key and session_id:
@@ -740,7 +739,7 @@ class PipelineExecutor:
                     if user_manager.litellm_service:
                         # Используем ключ пользователя из сессии
                         user_api_key = user_manager.litellm_service.default_api_key
-                        user_model = user_model or user_manager.litellm_service.default_model
+                        model = user_manager.litellm_service.default_model
                         # provider определяем из ключа (будет добавлен позже)
                 except Exception as e:
                     logger.warning(f"Ошибка получения ключа сессии: {e}")
@@ -758,7 +757,7 @@ class PipelineExecutor:
                     prompt=user_message,
                     system_prompt=full_context,
                     api_key=user_api_key,
-                    model=user_model,
+                    model=model,
                     provider=user_provider  # Передаём провайдера явно
                 )
 

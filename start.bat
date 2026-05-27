@@ -39,10 +39,10 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr :5174 ^| findstr LISTENING') 
 echo   ✓ Порты освобождены
 echo.
 
-:: Запускаем backend (main.py - полная версия с метриками)
-echo [2/5] Запуск Backend (полная версия, порт 8080)...
+:: Запускаем backend
+echo [2/5] Запуск Backend (порт 8080)...
 cd /d "%~dp0backend"
-start "PAD+ AI Backend" cmd /k "echo Backend запускается... && set PORT=8080 && set RENDER=true && C:\Python314\python.exe main.py"
+start "PAD+ AI Backend" cmd /k "echo Backend запускается... && uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
 cd /d "%~dp0"
 
 :: Ждём пока backend полностью загрузится (теперь нужно больше времени)

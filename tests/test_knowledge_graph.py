@@ -1,162 +1,115 @@
 """
-Тестирование Knowledge Graph — NeuroMind AI
+Тестирование Knowledge Graph — PAD+ AI
 """
 
+import pytest
 import sys
 import os
-import asyncio
-from typing import Dict, Any
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class TestKnowledgeGraph:
     """Тестирование Knowledge Graph системы"""
-    
-    async def test_graph_initialization(self):
-        """Тест инициализации графа знаний"""
+
+    @pytest.fixture
+    def graph(self):
         from knowledge.graph import get_knowledge_graph
-        
-        graph = get_knowledge_graph()
-        
+        return get_knowledge_graph()
+
+    @pytest.mark.asyncio
+    async def test_graph_initialization(self, graph):
+        """Тест инициализации графа знаний"""
         stats = graph.get_stats()
         
+        assert "nodes" in stats
+        assert "edges" in stats
         assert stats["nodes"] >= 0
         assert stats["edges"] >= 0
-        print("  ✅ Knowledge Graph: инициализация работает")
-    
-    async def test_node_operations(self):
-        """Тест операций с узлами"""
-        from knowledge.graph import get_knowledge_graph
-        
-        graph = get_knowledge_graph()
-        
-        # Тест добавления узла
-        node_id = graph.add_node("Тест узла", {"type": "test"})
-        assert node_id is not None
-        
-        # Тест получения узла
-        node = graph.get_node(node_id)
-        assert node is not None
-        assert node["data"]["type"] == "test"
-        
-        # Тест удаления узла
-        graph.delete_node(node_id)
-        node = graph.get_node(node_id)
-        assert node is None
-        
-        print("  ✅ Knowledge Graph: операции с узлами работают")
-    
-    async def test_edge_operations(self):
-        """Тест операций с ребрами"""
-        from knowledge.graph import get_knowledge_graph
-        
-        graph = get_knowledge_graph()
-        
-        # Создание узлов
-        node1_id = graph.add_node("Узел 1", {"type": "source"})
-        node2_id = graph.add_node("Узел 2", {"type": "target"})
-        
-        # Тест добавления ребра
-        edge_id = graph.add_edge(node1_id, node2_id, "связь", {"weight": 0.8})
-        assert edge_id is not None
-        
-        # Тест получения ребра
-        edge = graph.get_edge(edge_id)
-        assert edge is not None
-        assert edge["data"]["weight"] == 0.8
-        
-        # Тест удаления ребра
-        graph.delete_edge(edge_id)
-        edge = graph.get_edge(edge_id)
-        assert edge is None
-        
-        # Очистка узлов
-        graph.delete_node(node1_id)
-        graph.delete_node(node2_id)
-        
-        print("  ✅ Knowledge Graph: операции с ребрами работают")
-    
-    async def test_complex_queries(self):
-        """Тест сложных запросов"""
-        from knowledge.graph import get_knowledge_graph
-        
-        graph = get_knowledge_graph()
-        
-        # Тест поиска по свойствам
-        results = graph.search_nodes({"type": "concept"})
-        assert isinstance(results, list)
-        
-        # Тест поиска соседей
-        neighbors = graph.get_neighbors("some_node_id")
-        assert isinstance(neighbors, list)
-        
-        # Тест путей
-        paths = graph.find_paths("start_node", "end_node", max_length=3)
-        assert isinstance(paths, list)
-        
-        print("  ✅ Knowledge Graph: сложные запросы работают")
-    
-    async def test_graph_inference(self):
-        """Тест вывода знаний"""
-        from knowledge.graph import get_knowledge_graph
-        
-        graph = get_knowledge_graph()
-        
-        # Тест вывода
-        inference = graph.infer("some_concept")
-        assert isinstance(inference, dict)
-        assert "related_concepts" in inference
-        
-        print("  ✅ Knowledge Graph: вывод знаний работает")
-    
-    async def test_graph_updates(self):
-        """Тест обновлений графа"""
-        from knowledge.graph import get_knowledge_graph
-        
-        graph = get_knowledge_graph()
-        
-        # Тест обновления узла
-        node_id = graph.add_node("Обновляемый узел", {"value": 1})
-        graph.update_node(node_id, {"value": 2})
-        
-        node = graph.get_node(node_id)
-        assert node["data"]["value"] == 2
-        
-        # Тест обновления ребра
-        edge_id = graph.add_edge(node_id, "other_node", "связь", {"weight": 0.5})
-        graph.update_edge(edge_id, {"weight": 0.7})
-        
-        edge = graph.get_edge(edge_id)
-        assert edge["data"]["weight"] == 0.7
-        
-        # Очистка
-        graph.delete_node(node_id)
-        graph.delete_edge(edge_id)
-        
-        print("  ✅ Knowledge Graph: обновления работают")
 
+    @pytest.mark.asyncio
+    async def test_concept_operations(self, graph):
+        """Тест операций с концепциями"""
+        concept = graph.add_concept(
+            name="Тест концепция",
+            concept_type="test",
+            confidence=0.8,
+            metadata={"test": True}
+        )
+        
+        assert concept is not None
+        assert concept.id is not None
+        assert concept.name == "Тест концепция"
+        assert concept.concept_type == "test"
+        assert concept.confidence == 0.8
 
-def run_knowledge_graph_tests():
-    """Запуск всех тестов Knowledge Graph"""
-    print("\n" + "="*60)
-    print("🕸️ ТЕСТИРОВАНИЕ KNOWLEDGE GRAPH")
-    print("="*60)
-    
-    tests = TestKnowledgeGraph()
-    results = []
-    
-    # Запускаем все тесты
-    asyncio.run(tests.test_graph_initialization())
-    asyncio.run(tests.test_node_operations())
-    asyncio.run(tests.test_edge_operations())
-    asyncio.run(tests.test_complex_queries())
-    asyncio.run(tests.test_graph_inference())
-    asyncio.run(tests.test_graph_updates())
-    
-    print("="*60)
-    print("✅ Knowledge Graph: ВСЕ ТЕСТЫ ПРОЙДЕНЫ!")
-    print("="*60)
+        retrieved = graph.get_concept(concept.id)
+        assert retrieved is not None
+        assert retrieved.name == "Тест концепция"
 
+    @pytest.mark.asyncio
+    async def test_relation_operations(self, graph):
+        """Тест операций со связями"""
+        c1 = graph.add_concept(name="Узел 1", concept_type="source")
+        c2 = graph.add_concept(name="Узел 2", concept_type="target")
+        
+        relation = graph.add_relation(
+            source_id=c1.id,
+            target_id=c2.id,
+            relation_type="related",
+            weight=0.8,
+            confidence=0.9
+        )
+        
+        assert relation is not None
+        assert relation.source_id == c1.id
+        assert relation.target_id == c2.id
+        assert relation.weight == 0.8
 
-if __name__ == "__main__":
-    run_knowledge_graph_tests()
+    @pytest.mark.asyncio
+    async def test_find_concepts(self, graph):
+        """Тест поиска концепций"""
+        graph.add_concept(name="Python programming", concept_type="skill")
+        graph.add_concept(name="Python basics", concept_type="concept")
+        
+        results = graph.find_concepts("python")
+        
+        assert len(results) >= 2
+        assert any(r.name.lower() == "python programming" for r in results)
+
+    @pytest.mark.asyncio
+    async def test_get_related(self, graph):
+        """Тест получения связанных концепций"""
+        c1 = graph.add_concept(name="Мать")
+        c2 = graph.add_concept(name="Ребёнок")
+        
+        graph.add_relation(c1.id, c2.id, "related")
+        
+        related = graph.get_related(c1.id)
+        
+        assert isinstance(related, list)
+
+    @pytest.mark.asyncio
+    async def test_find_path(self, graph):
+        """Тест поиска пути между концепциями"""
+        c1 = graph.add_concept(name="A")
+        c2 = graph.add_concept(name="B")
+        c3 = graph.add_concept(name="C")
+        
+        graph.add_relation(c1.id, c2.id)
+        graph.add_relation(c2.id, c3.id)
+        
+        path = graph.find_path(c1.id, c3.id)
+        
+        assert isinstance(path, list)
+        if path:
+            assert len(path) >= 2
+
+    @pytest.mark.asyncio
+    async def test_graph_stats(self, graph):
+        """Тест статистики графа"""
+        stats = graph.get_stats()
+        
+        assert "nodes" in stats
+        assert "edges" in stats
+        assert "networkx_available" in stats

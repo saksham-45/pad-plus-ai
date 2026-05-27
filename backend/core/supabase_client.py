@@ -32,12 +32,11 @@ except Exception as e:
 
 
 _supabase: Optional[Client] = None
-_supabase_service: Optional[Client] = None
 
 
 def get_supabase() -> Optional[Client]:
     """
-    Возвращает клиент Supabase (anon key)
+    Возвращает клиент Supabase
     
     Инициализируется один раз при первом вызове.
     Берёт URL и ключ из .env
@@ -67,16 +66,31 @@ def get_supabase() -> Optional[Client]:
     
     try:
         if supabase_url and supabase_key:
-            _supabase = create_client(supabase_url, supabase_key)
-            logger.info(f"✅ Supabase подключен: {supabase_url}")
-        elif database_url:
-            service_key = os.getenv("SUPABASE_SERVICE_KEY")
-            if service_key and supabase_url:
-                _supabase = create_client(supabase_url, service_key)
-                logger.info(f"✅ Supabase подключен через SERVICE_ROLE: {supabase_url}")
+            # Проверяем тип ключа
+            if supabase_key.startswith('sb_publishable_'):
+                # Это анонимный ключ — НИКОГДА не используем SERVICE_ROLE на Render/Supabase
+                # Используем только публичный ключ
+                _supabase = create_client(supabase_url, supabase_key)
+                logger.info(f"✅ Supabase подключен: {supabase_url}")
             else:
-                logger.warning("⚠️ SUPABASE_SERVICE_KEY не настроен")
-                return None
+                # Это service_role ключ или другой тип
+                _supabase = create_client(supabase_url, supabase_key)
+                logger.info(f"✅ Supabase подключен: {supabase_url}")
+        elif database_url:
+            # DATABASE_URL используется ТОЛЬКО для RAG (PostgreSQL), не для основных таблиц
+            # Основные таблицы работают через Supabase Auth + RLS → требуют SUPABASE_URL + SUPABASE_KEY
+            if not supabase_url or not supabase_key:
+                # Только если SUPABASE_URL не задан — тогда SERVICE_ROLE обязателен
+                service_key = os.getenv("SUPABASE_SERVICE_KEY")
+                if service_key:
+                    _supabase = create_client(supabase_url, service_key)
+                    logger.info(f"✅ Supabase подключен через SERVICE_ROLE: {supabase_url}")
+                else:
+                    logger.warning("⚠️ SUPABASE_SERVICE_KEY не настроен, но он не требуется для основных таблиц")
+                    return None
+            else:
+                # SUPABASE_URL и SUPABASE_KEY заданы → используем их, DATABASE_URL игнорируем
+                logger.info("ℹ️ DATABASE_URL задан, но не используется для основных таблиц (только для RAG)")
         else:
             logger.warning("⚠️ Нет настроек для подключения к БД")
             return None
@@ -90,37 +104,51 @@ def get_supabase() -> Optional[Client]:
 
 def get_supabase_service() -> Optional[Client]:
     """
-    Возвращает сервисный клиент Supabase (service_role key)
+    Возвращает клиент Supabase с сервисным ключом для прямого доступа к таблицам
     
-    Используется ТОЛЬКО на backend после проверки авторизации пользователя.
-    Обходит RLS политики — поэтому требует явной проверки прав в коде.
+    Используется для операций, требующих обхода RLS (Row Level Security)
+    Например: загрузка документов, управление коллекциями
     
     Returns:
-        Сервисный клиент Supabase или None если SERVICE_KEY не настроен
+        Клиент Supabase или None если не настроен
     """
     global _supabase_service
     
-    if _supabase_service is not None:
+    if '_supabase_service' in globals() and _supabase_service is not None:
         return _supabase_service
     
     if not HAS_SUPABASE:
         logger.warning("⚠️ Supabase клиент не установлен")
         return None
     
+    # Получаем настройки из .env
     supabase_url = os.getenv("SUPABASE_URL")
     service_key = os.getenv("SUPABASE_SERVICE_KEY")
     
-    if not supabase_url or not service_key:
-        logger.warning("⚠️ SUPABASE_URL или SUPABASE_SERVICE_KEY не настроены")
+    if not supabase_url:
+        logger.warning("⚠️ SUPABASE_URL не настроен")
         return None
     
     try:
-        _supabase_service = create_client(supabase_url, service_key)
-        logger.info("✅ Supabase service client инициализирован")
+        if service_key:
+            # Используем service role ключ
+            _supabase_service = create_client(supabase_url, service_key)
+            logger.info(f"✅ Supabase service client подключен: {supabase_url}")
+        else:
+            # Если service key не задан, используем обычный ключ как fallback
+            # Это позволит работать в development без service key
+            supabase_key = os.getenv("SUPABASE_KEY")
+            if supabase_key:
+                _supabase_service = create_client(supabase_url, supabase_key)
+                logger.warning("⚠️ SUPABASE_SERVICE_KEY не настроен, используем обычный ключ как fallback")
+            else:
+                logger.warning("⚠️ Ни SUPABASE_SERVICE_KEY, ни SUPABASE_KEY не настроены")
+                return None
+        
         return _supabase_service
         
     except Exception as e:
-        logger.error(f"❌ Ошибка инициализации service client: {e}")
+        logger.error(f"❌ Ошибка подключения service client к БД: {e}")
         return None
 
 

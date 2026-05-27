@@ -1,8 +1,7 @@
 """
-🧠 X-Ray — система наблюдения и принятия решений AI
+🧠 X-Ray — система наблюдения и анализа AI
 
 Компоненты:
-- Brain: центр принятия решений (strategy, model, memory, verification)
 - SystemState: состояние системы (load, confidence, errors)
 - MetaLearner: мета-обучение (статистика стратегий)
 - ReflectionLoop: рефлексия (анализ результатов)
@@ -14,7 +13,9 @@
 - HistoryRecorder: запись сессий
 - ThoughtVisualizer: визуализация мыслей
 - TraceCollector: сбор трасс
-- Validator: валидация
+- Tracer: трассировка
+
+Примечание: XRayBrain был удалён.
 """
 
 # === НОВЫЕ КОМПОНЕНТЫ BRAIN ===

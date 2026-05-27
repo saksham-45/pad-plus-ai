@@ -20,10 +20,18 @@ env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # Настройка логирования (единожды)
+# Fix для Windows: используем UTF-8 кодировку для логов
+import sys
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    datefmt='%Y-%m-%d %H:%M:%S',
+    encoding='utf-8'
 )
 logger = logging.getLogger("padplus")
 
@@ -53,8 +61,11 @@ async def lifespan(app: FastAPI):
     logger.info("🧠 PAD+ AI v3.5 запускается...")
     start_time = time.time()
     
-    # Быстрые инициализации (СИНХРОННО, БЛОКИРУЮЩИЕ)
-    
+    # Регистрация зависимостей (Вторая очередь улучшений)
+    logger.info("📦 Регистрация зависимостей...")
+    register_dependencies()
+    logger.info(f"✅ Dependency Injection инициализирован ({time.time()-start_time:.2f}s)")
+
     # Проверка целостности ANTI_DIRECTIVE
     logger.info("🔒 Проверка ANTI_DIRECTIVE...")
     if not check_integrity():
@@ -67,6 +78,19 @@ async def lifespan(app: FastAPI):
     cache_manager = get_cache_manager()
     await cache_manager.connect()
     logger.info(f"✅ Cache manager инициализирован ({time.time()-start_time:.2f}s)")
+    
+    # Запуск системы мониторинга (откладываем на фон)
+    logger.info("📊 Запуск мониторинга...")
+    monitoring_system = get_monitoring_system()
+    await monitoring_system.start_monitoring()
+    logger.info(f"✅ Система мониторинга запущена ({time.time()-start_time:.2f}s)")
+    
+    # Запуск импульса
+    logger.info("💫 Запуск импульса...")
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from scripts.impulse import start_impulse
+    impulse = start_impulse()
+    logger.info(f"✅ Импульс: {impulse['question']} ({time.time()-start_time:.2f}s)")
     
     # Инициализация данных
     logger.info("📁 Инициализация директорий данных...")
@@ -82,58 +106,30 @@ async def lifespan(app: FastAPI):
     
     logger.info(f"✅ Директория данных готова: {data_dir} ({time.time()-start_time:.2f}s)")
     
-    # === АСИНХРОННЫЕ ИНИЦИАЛИЗАЦИИ (НА ФОНЕ - НЕ БЛОКИРУЮТ STARTUP) ===
-    
-    async def background_initialization():
-        """Инициализация на фоне - не блокирует startup"""
-        bg_start = time.time()
-        
-        try:
-            # Запуск системы мониторинга
-            logger.info("📊 Запуск мониторинга в фоне...")
-            monitoring_system = get_monitoring_system()
-            await monitoring_system.start_monitoring()
-            logger.info(f"✅ Система мониторинга запущена ({time.time()-bg_start:.2f}s)")
-        except Exception as e:
-            logger.warning(f"⚠️ Ошибка при запуске мониторинга: {e}")
-        
-        try:
-            # Запуск импульса
-            logger.info("💫 Запуск импульса в фоне...")
-            sys.path.insert(0, str(Path(__file__).parent.parent))
-            from scripts.impulse import start_impulse
-            impulse = start_impulse()
-            logger.info(f"✅ Импульс: {impulse.get('question', 'unknown')} ({time.time()-bg_start:.2f}s)")
-        except Exception as e:
-            logger.warning(f"⚠️ Ошибка при запуске импульса: {e}")
-        
-        try:
-            # ChromaDB инициализация (ТЯЖЕЛАЯ - откладываем на фон)
-            logger.info("🧠 Инициализация RAG Memory в фоне...")
-            from memory.rag import get_rag
-            rag = get_rag()
-            logger.info(f"✅ RAG Memory инициализирована ({time.time()-bg_start:.2f}s)")
-        except Exception as e:
-            logger.warning(f"⚠️ RAG Memory инициализация ошибка: {e}")
-    
-    # Запускаем фоновую инициализацию БЕЗ ожидания
-    import asyncio
-    asyncio.create_task(background_initialization())
+    # ChromaDB инициализация (можно отложить)
+    logger.info("🧠 Инициализация RAG Memory...")
+    try:
+        from memory.rag import get_rag
+        rag = get_rag()
+        logger.info(f"✅ RAG Memory инициализирована ({time.time()-start_time:.2f}s)")
+    except Exception as e:
+        logger.warning(f"⚠️ RAG Memory инициализация задерживается: {e}")
     
     total_time = time.time() - start_time
-    logger.info(f"🚀 PAD+ AI готов к работе! (быстрый старт: {total_time:.2f}s, фоновая инициализация продолжается...)")
+    logger.info(f"🚀 PAD+ AI готов к работе! (всего: {total_time:.2f}s)")
     
     yield
     
     # === SHUTDOWN ===
     logger.info("🛑 PAD+ AI останавливается...")
 
+    # Отключение системы мониторинга
+    await monitoring_system.stop_monitoring()
+    logger.info("✅ Система мониторинга остановлена")
+    
     # Отключение кэш менеджера
-    try:
-        await cache_manager.disconnect()
-        logger.info("✅ Cache manager отключен")
-    except Exception as e:
-        logger.error(f"❌ Ошибка отключения cache manager: {e}")
+    await cache_manager.disconnect()
+    logger.info("✅ Cache manager отключен")
 
 
 # CORS middleware — настройка для production
@@ -214,55 +210,18 @@ app.add_middleware(
 
 logger.info("🛡️ ValidationMiddleware установлен")
 
-# Добавляем Security middleware для HTTPS, rate limiting и security headers
-from security_middleware import SecurityMiddleware, RateLimitMiddleware
-
-# Определяем production environment
-is_production = (
-    os.getenv("RENDER") == "true" or 
-    os.getenv("RENDER_EXTERNAL_HOSTNAME") or
-    (os.getenv("DEBUG", "true").lower() == "false" and os.getenv("ENVIRONMENT") == "production")
-)
-
-# Rate limiting настройки
-rate_limit_per_minute = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
-
-# ВКЛЮЧАЕМ ВСЕ MIDDLEWARE ДЛЯ PRODUCTION БЕЗОПАСНОСТИ
-logger.info("🔧 Включение security middleware...")
-
-# Добавляем Rate Limiting middleware (проверяется ДО Security middleware)
-app.add_middleware(
-    RateLimitMiddleware,
-    requests_per_minute=rate_limit_per_minute,
-    burst_size=10
-)
-
-# Добавляем Security middleware
-app.add_middleware(
-    SecurityMiddleware,
-    https_redirect=is_production,  # Включаем HTTPS перенаправление только в production
-    rate_limit=rate_limit_per_minute * 2  # Двойной лимит для security middleware
-)
-
-logger.info(f"🔒 Security middleware установлен (HTTPS redirect: {is_production}, Rate limit: {rate_limit_per_minute}/min)")
-
 # Добавляем CSRF middleware для защиты от межсайтовой подделки запросов
-try:
-    from core.csrf_middleware import CSRFMiddleware
-    
-    if csrf_secret_key:
-        app.add_middleware(
-            CSRFMiddleware,
-            secret_key=csrf_secret_key,
-            cookie_secure=is_production,  # Включить в production (HTTPS)
-            cookie_httponly=True,
-            cookie_samesite="lax",
-        )
-        logger.info("🛡️ CSRFMiddleware установлен")
-    else:
-        logger.warning("⚠️ CSRF_SECRET_KEY не задан, CSRFMiddleware пропущен")
-except ImportError:
-    logger.warning("⚠️ CSRFMiddleware недоступен, пропущен")
+from core.csrf_middleware import CSRFMiddleware
+
+app.add_middleware(
+    CSRFMiddleware,
+    secret_key=csrf_secret_key,
+    cookie_secure=False,  # Включить в production (HTTPS)
+    cookie_httponly=True,
+    cookie_samesite="lax",
+)
+
+logger.info("🛡️ CSRFMiddleware установлен")
 
 
 # ПРИНУДИТЕЛЬНЫЕ CORS-ЗАГОЛОВКИ (для всех ответов, даже при ошибках)
@@ -282,22 +241,23 @@ async def force_cors_headers(request, call_next):
     # Получаем origin из запроса
     origin = request.headers.get("origin")
     
-    # В production проверяем точное совпадение с FRONTEND_URL
-    if is_production and frontend_url:
-        # Используем ТОЧНЫЙ URL без wildcards
-        allowed_frontend = frontend_url.replace("https://", "").replace("http://", "")
-        if origin and (origin.endswith(allowed_frontend) or origin == f"https://{allowed_frontend}" or origin == f"http://{allowed_frontend}"):
+    # В production с динамическими origin'ами разрешаем все onrender.com домены
+    if is_production:
+        if origin and ("onrender.com" in origin or "render.app" in origin):
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        elif origin and origin in allow_origins:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
         else:
-            # Запросы с неправильного origin не получают CORS заголовки
-            logger.warning(f"⚠️ Blocked CORS request from unauthorized origin: {origin}")
+            # Для production без конкретного origin - не устанавливаем конкретный origin
+            pass
     else:
         # В development - строго по списку
         if origin and origin in allow_origins:
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Access-Control-Allow-Credentials"] = "true"
-        elif allow_origins and not is_production:
+        elif allow_origins:
             response.headers["Access-Control-Allow-Origin"] = allow_origins[0]
             response.headers["Access-Control-Allow-Credentials"] = "true"
     
@@ -711,55 +671,6 @@ else:
 # ============================================================================
 # PROMETHEUS METRICS
 # ============================================================================
-
-
-
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint для Render и других сервисов мониторинга.
-    
-    Returns:
-        JSON с статусом здоровья приложения
-    """
-    health_status = {
-        "status": "healthy",
-        "version": "4.0.0",
-        "timestamp": datetime.utcnow().isoformat(),
-    }
-    
-    # Проверяем доступность кэша
-    try:
-        cache_manager = get_cache_manager()
-        if hasattr(cache_manager, 'connected') and cache_manager.connected:
-            health_status["cache"] = "connected"
-        else:
-            health_status["cache"] = "disconnected"
-            health_status["status"] = "degraded"
-    except Exception as e:
-        health_status["cache"] = f"error: {str(e)}"
-        health_status["status"] = "degraded"
-    
-    # Проверяем доступность БД (Supabase)
-    try:
-        supabase = get_supabase()
-        if supabase:
-            health_status["database"] = "connected"
-        else:
-            health_status["database"] = "disconnected"
-            health_status["status"] = "degraded"
-    except Exception as e:
-        health_status["database"] = f"error: {str(e)}"
-        health_status["status"] = "degraded"
-    
-    # HTTP статус код зависит от overall статуса
-    status_code = 200 if health_status["status"] == "healthy" else 503
-    
-    return JSONResponse(
-        content=health_status,
-        status_code=status_code
-    )
-
 
 @app.get("/metrics")
 async def metrics():

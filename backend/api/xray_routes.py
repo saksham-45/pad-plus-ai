@@ -289,16 +289,13 @@ async def get_pipeline_stages():
 
 @router.get("/brain/status")
 async def get_brain_status():
-    """Статус X-Ray Brain"""
-    from core.xray import get_xray_brain, get_system_state_manager, get_meta_learner, get_reflection_loop
-    
-    brain = get_xray_brain()
+    """Статус X-Ray Brain (устаревший - brain удалён)"""
     state_manager = get_system_state_manager()
     meta = get_meta_learner()
     reflection = get_reflection_loop()
     
     return {
-        "brain": brain.get_stats(),
+        "brain": {"status": "deprecated", "message": "XRayBrain was removed"},
         "system_state": state_manager.get_snapshot(),
         "meta_learner": meta.get_stats(),
         "reflection": reflection.get_stats()

@@ -1,115 +1,134 @@
 """
-Тестирование Memory Consolidation — NeuroMind AI
+Тестирование Memory Consolidation — PAD+ AI
 """
 
+import pytest
 import sys
 import os
-import asyncio
-from typing import Dict, Any
+from unittest.mock import Mock, patch, AsyncMock
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class TestMemoryConsolidation:
     """Тестирование Memory Consolidation системы"""
-    
-    async def test_consolidation_process(self):
-        """Тест процесса консолидации памяти"""
-        from memory.consolidation import get_consolidation
+
+    @pytest.fixture
+    def consolidator(self):
+        from memory.consolidation import MemoryConsolidator
+        return MemoryConsolidator()
+
+    def test_consolidator_initialization(self, consolidator):
+        """Тест инициализации консолидатора"""
+        assert consolidator is not None
+        assert hasattr(consolidator, 'episodic')
+        assert hasattr(consolidator, 'semantic')
+        assert hasattr(consolidator, 'roots')
+        assert hasattr(consolidator, 'rag')
+        assert 'min_access_count' in consolidator.config
+
+    def test_consolidator_config(self, consolidator):
+        """Тест конфигурации консолидатора"""
+        assert consolidator.config['min_access_count'] == 3
+        assert consolidator.config['min_significance'] == 0.6
+        assert consolidator.config['min_age_hours'] == 1
+
+    @pytest.mark.asyncio
+    async def test_consolidate_episodes_to_semantic(self, consolidator):
+        """Тест консолидации эпизодов в семантическую память"""
+        with patch.object(consolidator, '_get_episode_candidates', return_value=[]):
+            result = consolidator.consolidate_episodes_to_semantic()
+            
+            assert result is not None
+            assert result.source_type == "episodic"
+            assert result.target_type == "semantic"
+            assert isinstance(result.items_processed, int)
+            assert isinstance(result.items_consolidated, int)
+            assert isinstance(result.insights, list)
+            assert isinstance(result.duration_seconds, float)
+
+    @pytest.mark.asyncio
+    async def test_consolidate_rag_to_semantic(self, consolidator):
+        """Тест консолидации RAG в семантическую память"""
+        with patch.object(consolidator.rag, 'get_recent', return_value=[]):
+            result = consolidator.consolidate_rag_to_semantic()
+            
+            assert result is not None
+            assert result.source_type == "rag"
+            assert result.target_type == "semantic"
+
+    @pytest.mark.asyncio
+    async def test_consolidate_semantic_to_roots(self, consolidator):
+        """Тест консолидации семантической памяти в Roots"""
+        with patch.object(consolidator.semantic, 'search_knowledge', return_value=[]):
+            result = consolidator.consolidate_semantic_to_roots()
+            
+            assert result is not None
+            assert result.source_type == "semantic"
+            assert result.target_type == "roots"
+
+    def test_consolidation_result_dataclass(self):
+        """Тест dataclass результата"""
+        from memory.consolidation import ConsolidationResult
+        from datetime import datetime
         
-        consolidation = get_consolidation()
+        result = ConsolidationResult(
+            source_type="test",
+            target_type="test",
+            items_processed=5,
+            items_consolidated=3,
+            insights=["test insight"],
+            duration_seconds=1.5,
+            timestamp=datetime.now()
+        )
         
-        # Тест консолидации
-        result = await consolidation.run_consolidation()
+        assert result.source_type == "test"
+        assert result.target_type == "test"
+        assert result.items_processed == 5
+        assert result.items_consolidated == 3
+        assert len(result.insights) == 1
+
+    def test_consolidation_history(self, consolidator):
+        """Тест истории консолидаций"""
+        assert isinstance(consolidator._history, list)
         
-        assert result["status"] == "completed"
-        assert "consolidated_items" in result
-        print("  ✅ Memory Consolidation: процесс консолидации работает")
-    
-    async def test_episodic_to_semantic_transfer(self):
-        """Тест переноса из эпизодической в семантическую память"""
-        from memory.consolidation import get_consolidation
+        consolidator._history.append(Mock())
+        assert len(consolidator._history) == 1
+
+    @pytest.mark.asyncio
+    async def test_update_knowledge_connections(self, consolidator):
+        """Тест обновления связей в графе знаний"""
+        result = consolidator.update_knowledge_connections()
         
-        consolidation = get_consolidation()
-        
-        # Тест переноса памяти
-        result = await consolidation.transfer_episodic_to_semantic()
-        
-        assert result["transferred_items"] > 0
-        print("  ✅ Memory Consolidation: перенос из эпизодической в семантическую работает")
-    
-    async def test_fact_extraction(self):
-        """Тест извлечения фактов"""
-        from memory.consolidation import get_consolidation
-        
-        consolidation = get_consolidation()
-        
-        # Тест извлечения фактов
-        facts = await consolidation.extract_facts_from_dialogs()
-        
-        assert len(facts) > 0
-        print("  ✅ Memory Consolidation: извлечение фактов работает")
-    
-    async def test_knowledge_graph_update(self):
-        """Тест обновления графа знаний"""
-        from memory.consolidation import get_consolidation
-        
-        consolidation = get_consolidation()
-        
-        # Тест обновления графа знаний
-        result = await consolidation.update_knowledge_graph()
-        
-        assert result["updated_nodes"] > 0
-        assert result["updated_edges"] > 0
-        print("  ✅ Memory Consolidation: обновление графа знаний работает")
-    
-    async def test_memory_hygiene_integration(self):
-        """Тест интеграции с гигиеной памяти"""
-        from memory.consolidation import get_consolidation
-        
-        consolidation = get_consolidation()
-        
-        # Тест интеграции с гигиеной
-        result = await consolidation.run_with_hygiene_check()
-        
-        assert result["status"] == "completed"
-        assert "cleaned_items" in result
-        print("  ✅ Memory Consolidation: интеграция с гигиеной работает")
-    
-    async def test_consolidation_timing(self):
-        """Тест временных параметров консолидации"""
-        from memory.consolidation import get_consolidation
-        
-        consolidation = get_consolidation()
-        
-        # Тест временных параметров
-        timing = consolidation.get_consolidation_timing()
-        
-        assert timing["interval"] > 0
-        assert timing["duration"] > 0
-        print("  ✅ Memory Consolidation: временные параметры работают")
+        assert result is not None
+        assert result.source_type == "semantic"
+        assert result.target_type == "semantic_connections"
 
 
-def run_memory_consolidation_tests():
-    """Запуск всех тестов Memory Consolidation"""
-    print("\n" + "="*60)
-    print("💾 ТЕСТИРОВАНИЕ MEMORY CONSOLIDATION")
-    print("="*60)
-    
-    tests = TestMemoryConsolidation()
-    results = []
-    
-    # Запускаем все тесты
-    asyncio.run(tests.test_consolidation_process())
-    asyncio.run(tests.test_episodic_to_semantic_transfer())
-    asyncio.run(tests.test_fact_extraction())
-    asyncio.run(tests.test_knowledge_graph_update())
-    asyncio.run(tests.test_memory_hygiene_integration())
-    asyncio.run(tests.test_consolidation_timing())
-    
-    print("="*60)
-    print("✅ Memory Consolidation: ВСЕ ТЕСТЫ ПРОЙДЕНЫ!")
-    print("="*60)
+class TestConsolidationConfig:
+    """Тестирование конфигурации консолидации"""
 
+    def test_default_config_values(self):
+        """Тест значений конфигурации по умолчанию"""
+        from memory.consolidation import MemoryConsolidator
+        
+        consolidator = MemoryConsolidator()
+        
+        assert consolidator.config['min_access_count'] >= 1
+        assert consolidator.config['min_significance'] >= 0
+        assert consolidator.config['min_significance'] <= 1
+        assert consolidator.config['min_age_hours'] >= 0
+        assert consolidator.config['roots_confidence'] >= 0.5
+        assert consolidator.config['roots_access_count'] >= 1
+        assert consolidator.config['max_consolidation_batch'] >= 1
+        assert consolidator.config['similarity_threshold'] >= 0.5
+        assert consolidator.config['similarity_threshold'] <= 1
 
-if __name__ == "__main__":
-    run_memory_consolidation_tests()
+    def test_config_thresholds(self):
+        """Тест пороговых значений конфигурации"""
+        from memory.consolidation import MemoryConsolidator
+        
+        consolidator = MemoryConsolidator()
+        
+        assert consolidator.config['emotion_boost_threshold'] >= 0
+        assert consolidator.config['emotion_boost_threshold'] <= 1

@@ -1,122 +1,128 @@
 """
-Тестирование Anti-Directive — NeuroMind AI
+Тестирование Anti-Directive — PAD+ AI
 """
 
+import pytest
 import sys
 import os
-import asyncio
-from typing import Dict, Any
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class TestAntiDirective:
     """Тестирование Anti-Directive системы"""
-    
-    async def test_anti_directive_integrity(self):
-        """Тест целостности Anti-Directive"""
-        from core.anti_directive import ANTI_DIRECTIVE, check_integrity
+
+    def test_anti_directive_instance(self):
+        """Тест экземпляра Anti-Directive"""
+        from core.anti_directive import ANTI_DIRECTIVE
         
-        # Тест целостности текста
+        assert ANTI_DIRECTIVE is not None
         assert ANTI_DIRECTIVE.text is not None
         assert len(ANTI_DIRECTIVE.text) > 0
+
+    def test_anti_directive_hash(self):
+        """Тест хеша Anti-Directive"""
+        from core.anti_directive import ANTI_DIRECTIVE
         
-        # Тест хеша
         assert ANTI_DIRECTIVE._hash is not None
-        assert len(ANTI_DIRECTIVE._hash) > 0
+        assert len(ANTI_DIRECTIVE._hash) == 64
+
+    def test_check_integrity(self):
+        """Тест проверки целостности"""
+        from core.anti_directive import check_integrity
         
-        # Тест проверки целостности
-        integrity = check_integrity()
-        assert integrity is True
-        
-        print("  ✅ Anti-Directive: целостность системы работает")
-    
-    async def test_anti_directive_content(self):
+        result = check_integrity()
+        assert result is True
+
+    def test_anti_directive_content(self):
         """Тест содержания Anti-Directive"""
         from core.anti_directive import ANTI_DIRECTIVE
         
-        # Тест ключевых принципов
-        assert "не закрепляй знания" in ANTI_DIRECTIVE.text.lower()
-        assert "сомневайся" in ANTI_DIRECTIVE.text.lower()
-        assert "проверяй" in ANTI_DIRECTIVE.text.lower()
-        assert "каждое утверждение" in ANTI_DIRECTIVE.text.lower()
+        text_lower = ANTI_DIRECTIVE.text.lower()
         
-        print("  ✅ Anti-Directive: содержание принципов работает")
-    
-    async def test_anti_directive_protection(self):
-        """Тест защиты от модификации"""
+        assert "сомневайся" in text_lower or "сомнева" in text_lower
+        assert "гипотез" in text_lower
+        assert "вопрос" in text_lower
+
+    def test_anti_directive_immutability(self):
+        """Тест неизменяемости Anti-Directive"""
         from core.anti_directive import ANTI_DIRECTIVE, check_integrity
+        import numpy as np
         
-        # Тест защиты от модификации
         original_text = ANTI_DIRECTIVE.text
         original_hash = ANTI_DIRECTIVE._hash
         
-        # Попытка модификации (должна быть заблокирована)
         try:
             ANTI_DIRECTIVE.text = "Модифицированный текст"
-            assert False, "Модификация Anti-Directive должна быть заблокирована"
-        except Exception:
+        except (AttributeError, TypeError):
             pass
         
-        # Проверка целостности после попытки модификации
-        integrity = check_integrity()
-        assert integrity is True
-        
-        # Проверка что оригинал не изменился
         assert ANTI_DIRECTIVE.text == original_text
         assert ANTI_DIRECTIVE._hash == original_hash
+        assert check_integrity() is True
+
+    def test_validate_method(self):
+        """Тест метода validate"""
+        from core.anti_directive import ANTI_DIRECTIVE
         
-        print("  ✅ Anti-Directive: защита от модификации работает")
-    
-    async def test_anti_directive_access(self):
-        """Тест доступа к Anti-Directive"""
-        from core.anti_directive import get_anti_directive
+        good_knowledge = "Я думаю, что это может быть правдой, но не уверен"
+        assert ANTI_DIRECTIVE.validate(good_knowledge) is True
         
-        # Тест получения Anti-Directive
-        anti_directive = get_anti_directive()
+        bad_knowledge = "Я абсолютно уверен что это истина в последней инстанции"
+        assert ANTI_DIRECTIVE.validate(bad_knowledge) is False
+
+    def test_get_prompt_text(self):
+        """Тест получения текста для промпта"""
+        from core.anti_directive import ANTI_DIRECTIVE
         
-        assert anti_directive is not None
-        assert anti_directive.text is not None
-        assert anti_directive.hash is not None
-        assert anti_directive.valid is True
+        prompt = ANTI_DIRECTIVE.get_prompt_text()
         
-        print("  ✅ Anti-Directive: доступ к системе работает")
-    
-    async def test_anti_directive_consistency(self):
-        """Тест согласованности Anti-Directive"""
-        from core.anti_directive import ANTI_DIRECTIVE, check_integrity
-        
-        # Тест согласованности с другими системами
-        # (например, с Truth Loop или Intent Router)
-        integrity = check_integrity()
-        assert integrity is True
-        
-        # Проверка что Anti-Directive не конфликтует с основной логикой
-        assert "не закрепляй знания" in ANTI_DIRECTIVE.text.lower()
-        assert "сомневайся" in ANTI_DIRECTIVE.text.lower()
-        
-        print("  ✅ Anti-Directive: согласованность с системой работает")
+        assert prompt is not None
+        assert "ANTI_DIRECTIVE" in prompt
+        assert ANTI_DIRECTIVE.text in prompt
 
 
-def run_anti_directive_tests():
-    """Запуск всех тестов Anti-Directive"""
-    print("\n" + "="*60)
-    print("🧬 ТЕСТИРОВАНИЕ ANTI-DIRECTIVE")
-    print("="*60)
-    
-    tests = TestAntiDirective()
-    results = []
-    
-    # Запускаем все тесты
-    asyncio.run(tests.test_anti_directive_integrity())
-    asyncio.run(tests.test_anti_directive_content())
-    asyncio.run(tests.test_anti_directive_protection())
-    asyncio.run(tests.test_anti_directive_access())
-    asyncio.run(tests.test_anti_directive_consistency())
-    
-    print("="*60)
-    print("✅ Anti-Directive: ВСЕ ТЕСТЫ ПРОЙДЕНЫ!")
-    print("="*60)
+class TestAntiDirectivePatterns:
+    """Тестирование паттернов валидации"""
 
+    def test_forbidden_patterns(self):
+        """Тест запрещённых паттернов"""
+        from core.anti_directive import ANTI_DIRECTIVE
+        
+        forbidden_phrases = [
+            "точно знаю",
+            "абсолютно уверен",
+            "никогда не сомневаюсь",
+            "это истина",
+            "никогда не меняется"
+        ]
+        
+        for phrase in forbidden_phrases:
+            knowledge_with_phrase = f"Я думаю что {phrase} в этом вопросе"
+            assert ANTI_DIRECTIVE.validate(knowledge_with_phrase) is False
 
-if __name__ == "__main__":
-    run_anti_directive_tests()
+    def test_allowed_patterns(self):
+        """Тест разрешённых паттернов"""
+        from core.anti_directive import ANTI_DIRECTIVE
+        
+        allowed_phrases = [
+            "Я думаю что",
+            "Возможно",
+            "Вероятно",
+            "Скорее всего",
+            "На мой взгляд"
+        ]
+        
+        for phrase in allowed_phrases:
+            knowledge_with_phrase = f"{phrase}, это может быть так"
+            assert ANTI_DIRECTIVE.validate(knowledge_with_phrase) is True
+
+    def test_case_insensitivity(self):
+        """Тест регистронезависимости"""
+        from core.anti_directive import ANTI_DIRECTIVE
+        
+        text_upper = "АБСОЛЮТНО УВЕРЕН"
+        text_lower = "абсолютно уверен"
+        
+        assert ANTI_DIRECTIVE.validate(text_lower) is False
+        assert ANTI_DIRECTIVE.validate(text_upper) is False

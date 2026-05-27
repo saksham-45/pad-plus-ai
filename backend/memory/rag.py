@@ -27,6 +27,7 @@ sentence_transformers_available = False
 try:
     from sentence_transformers import SentenceTransformer
     sentence_transformers_available = True
+
     logger.info("✅ Sentence Transformers доступен")
 except Exception as e:
     logger.warning(f"⚠️ Sentence Transformers недоступен ({e})")
@@ -393,19 +394,11 @@ class RAGMemory:
     """
     
     def __init__(self, persist_dir: str = None, use_llm_summarization: bool = False):
-        logger.info(f"📁 Инициализация RAG Memory v3.0 (PostgreSQL) - ленивая загрузка")
+        logger.info(f"📁 Инициализация RAG Memory v3.0 (PostgreSQL)")
         
         self.use_llm_summarization = use_llm_summarization
-        self.conn = None
-        self.cursor = None
-        self._initialized = False
-        self._keywords_cache: Dict[str, List[str]] = {}
-    
-    def _ensure_initialized(self):
-        """Ленивая инициализация PostgreSQL"""
-        if self._initialized:
-            return
         
+        # Проверяем наличие PostgreSQL
         try:
             import psycopg2
             from psycopg2.extras import Json
@@ -417,13 +410,12 @@ class RAGMemory:
             import urllib.parse
             parsed = urllib.parse.urlparse(db_url)
             if 'connect_timeout' not in parsed.query:
-                # Добавляем таймаут 5 секунд для быстрой загрузки
+                # Добавляем таймаут 10 секунд
                 query_params = urllib.parse.parse_qs(parsed.query)
-                query_params['connect_timeout'] = ['5']
+                query_params['connect_timeout'] = ['10']
                 new_query = urllib.parse.urlencode(query_params, doseq=True)
                 db_url = db_url.replace(parsed.query, new_query) if parsed.query else f"{db_url}?{new_query}"
             
-            logger.info("🔄 Подключение к PostgreSQL для RAG Memory...")
             self.conn = psycopg2.connect(db_url)
             self.cursor = self.conn.cursor()
             
@@ -466,16 +458,16 @@ class RAGMemory:
             """)
             
             self.conn.commit()
-            self._initialized = True
             logger.info("✅ RAG Memory PostgreSQL инициализирован")
             
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации PostgreSQL: {e}")
-            # Fallback: продолжаем без RAG памяти
-            logger.warning("⚠️ RAG Memory будет работать без PostgreSQL")
+            # Fallback: продолжаем старт без RAG памяти
+            logger.warning("⚠️ RAG Memory инициализация не удалась, но backend будет запущен без RAG")
             self.conn = None
             self.cursor = None
-            self._initialized = True  # Чтобы не пытаться снова
+        
+        self._keywords_cache: Dict[str, List[str]] = {}
     
     def add_dialog(
         self,
@@ -485,12 +477,6 @@ class RAGMemory:
         user_id: Optional[str] = None  # === ФАЗА 2: Персонализация ===
     ) -> str:
         """Добавляет диалог в память с анализом"""
-        self._ensure_initialized()
-        
-        if not self.conn or not self.cursor:
-            logger.warning("⚠️ RAG Memory недоступен - диалог не сохранен")
-            return ""
-        
         import uuid
         import psycopg2
         from psycopg2.extras import Json
@@ -1035,8 +1021,35 @@ class RAGMemory:
     
     def get_stats(self) -> Dict[str, Any]:
         """Расширенная статистика RAG (PostgreSQL)"""
+        # Проверяем наличие psycopg2
         try:
             import psycopg2
+        except ImportError:
+            logger.warning("⚠️ psycopg2 не установлен, статистика RAG недоступна")
+            return {
+                "total_dialogs": 0,
+                "with_keywords": 0,
+                "summarized": 0,
+                "total_entities": 0,
+                "total_relations": 0,
+                "topic_distribution": {},
+                "sentiment_distribution": {"positive": 0, "negative": 0, "neutral": 0},
+                "persist_dir": "PostgreSQL",
+                "version": "3.0",
+                "features": {
+                    "hybrid_search": True,
+                    "keyword_extraction": True,
+                    "recency_ranking": True,
+                    "auto_summarization": True,
+                    "topic_classification": True,
+                    "entity_extraction": True,
+                    "relation_extraction": True,
+                    "llm_summarization": self.use_llm_summarization
+                },
+                "note": "psycopg2 не установлен - статистика недоступна"
+            }
+    
+        try:
             from psycopg2.extras import Json
             
             # Получаем URL базы данных
@@ -1150,17 +1163,11 @@ class RAGMemory:
 
 # Глобальный экземпляр
 _rag_memory: Optional[RAGMemory] = None
-_rag_init_error: bool = False
 
 
-def get_rag() -> Optional[RAGMemory]:
-    """Возвращает глобальную RAG память или None если инициализация не удалась"""
-    global _rag_memory, _rag_init_error
-    if _rag_memory is None and not _rag_init_error:
-        try:
-            _rag_memory = RAGMemory()
-        except Exception as e:
-            logger.error(f"❌ Ошибка инициализации RAG: {e}")
-            _rag_init_error = True
-            return None
+def get_rag() -> RAGMemory:
+    """Возвращает глобальную RAG память"""
+    global _rag_memory
+    if _rag_memory is None:
+        _rag_memory = RAGMemory()
     return _rag_memory

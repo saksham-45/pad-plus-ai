@@ -3,59 +3,66 @@
 ## Ошибки в логах
 
 ```
-ERROR - Failed to update key: 'new row violates row-level security policy'
 ERROR - Failed to insert key: 'new row violates row-level security policy'
+ERROR - Failed to insert key: 'HTTP/2 401 Unauthorized'
 ```
 
 ## Причина проблемы
 
-Политика UPDATE для таблицы `user_api_keys` **не имела WITH CHECK условия**, что привело к ошибкам при обновлении ключей.
+1. **Политики RLS не применены** или применены без приведения типов
+2. **Несоответствие типов:** auth.uid() возвращает UUID, user_id тоже UUID, но в некоторых версиях Supabase нужно явно привести оба к text
 
 ## Решение (2 шага)
 
 ### Шаг 1: Исправить RLS политики в Supabase
 
+**ВАЖНО:** Используется приведение типов `(auth.uid())::text = (user_id)::text`
+
 1. Откройте [Supabase Dashboard](https://supabase.com/dashboard)
-2. Перейдите в **SQL Editor**
-3. Скопируйте и выполните этот SQL (или используйте автоматический скрипт):
+2. Перейдите в **SQL Editor** → **New query**
+3. **Очистите редактор полностью** (удалите всё, что было)
+4. Скопируйте этот SQL (без маркдаун-блоков):
 
 ```sql
--- Исправление RLS политик для user_api_keys
-ALTER TABLE public.user_api_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_api_keys DISABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Users can insert own keys" ON public.user_api_keys;
 DROP POLICY IF EXISTS "Users can view own keys" ON public.user_api_keys;
+DROP POLICY IF EXISTS "Users can insert own keys" ON public.user_api_keys;
 DROP POLICY IF EXISTS "Users can update own keys" ON public.user_api_keys;
 DROP POLICY IF EXISTS "Users can delete own keys" ON public.user_api_keys;
+DROP POLICY IF EXISTS "Пользователи могут просматривать свои ключи" ON public.user_api_keys;
+DROP POLICY IF EXISTS "Пользователи могут вставлять свои ключи" ON public.user_api_keys;
+DROP POLICY IF EXISTS "Пользователи могут обновлять свои ключи" ON public.user_api_keys;
+DROP POLICY IF EXISTS "Пользователи могут удалять свои ключи" ON public.user_api_keys;
 
--- SELECT: Пользователи могут видеть только свои ключи
+ALTER TABLE public.user_api_keys ENABLE ROW LEVEL SECURITY;
+
 CREATE POLICY "Users can view own keys"
 ON public.user_api_keys
 FOR SELECT
-USING (auth.uid() = user_id);
+USING ((auth.uid())::text = (user_id)::text);
 
--- INSERT: Пользователи могут добавлять свои ключи
 CREATE POLICY "Users can insert own keys"
 ON public.user_api_keys
 FOR INSERT
-WITH CHECK (auth.uid() = user_id);
+WITH CHECK ((auth.uid())::text = (user_id)::text);
 
--- UPDATE: Пользователи могут обновлять свои ключи (WITH CHECK ВАЖЕН!)
 CREATE POLICY "Users can update own keys"
 ON public.user_api_keys
 FOR UPDATE
-USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);
+USING ((auth.uid())::text = (user_id)::text)
+WITH CHECK ((auth.uid())::text = (user_id)::text);
 
--- DELETE: Пользователи могут удалять свои ключи
 CREATE POLICY "Users can delete own keys"
 ON public.user_api_keys
 FOR DELETE
-USING (auth.uid() = user_id);
+USING ((auth.uid())::text = (user_id)::text);
 
--- Убедитесь, что authenticated пользователи имеют права
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_api_keys TO authenticated;
 ```
+
+5. Нажмите **Run** (или Ctrl+Enter)
+6. Ожидайте зелёную галку "Success" ✅
 
 ### Шаг 2: Перезапустить backend
 
@@ -65,27 +72,18 @@ python backend/main.py
 
 ## Проверка
 
-1. Попробуйте добавить или обновить API ключ через интерфейс
-2. Ошибка `new row violates row-level security policy` должна исчезнуть
-3. Ошибка 403 `Доступ запрещён. Проверьте RLS политики` должна исчезнуть
+1. Попробуйте добавить API ключ через интерфейс
+2. Ошибка `401 Unauthorized` должна исчезнуть
+3. Ошибка `new row violates row-level security policy` должна исчезнуть
 
 ## Что было исправлено в коде
 
-### 1. Модель `APIKeyUpdate` (backend/api/frontend_routes.py)
+### 1. Модель `APIKeyUpdate`
 
-**До:**
+**Добавлено:** поле `api_key` для обновления самого ключа
 ```python
 class APIKeyUpdate(BaseModel):
-    name: Optional[str] = None
-    model_preference: Optional[str] = None
-    is_default: Optional[bool] = None
-    is_active: Optional[bool] = None
-```
-
-**После:**
-```python
-class APIKeyUpdate(BaseModel):
-    api_key: Optional[str] = None  # ← Добавлено!
+    api_key: Optional[str] = None  # ← Новое поле
     name: Optional[str] = None
     model_preference: Optional[str] = None
     is_default: Optional[bool] = None
@@ -94,21 +92,29 @@ class APIKeyUpdate(BaseModel):
 
 ### 2. Эндпоинт `PATCH /api/v1/keys/{key_id}`
 
-**Раньше** мог обновлять только: name, model_preference, is_default, is_active  
-**Теперь** может обновлять и сам ключ (api_key) с автоматическим шифрованием
+**Улучшение:** теперь обрабатывает обновление ключа с шифрованием
+```python
+if data.api_key is not None:
+    encrypted_key = encryptor.encrypt(data.api_key)
+    update_data["api_key_encrypted"] = encrypted_key
+```
 
 ### 3. RLS политики в Supabase
 
-**Проблема:** UPDATE политика не имела WITH CHECK  
-**Исправление:** Добавлен WITH CHECK для гарантии, что обновленная строка остается в области видимости пользователя
+**Критическое исправление:** добавлено приведение типов `::text`
 
+**Было (неработающее):**
 ```sql
-CREATE POLICY "Users can update own keys"
-ON public.user_api_keys
-FOR UPDATE
 USING (auth.uid() = user_id)
-WITH CHECK (auth.uid() = user_id);  -- ← Добавлено!
 ```
+
+**Стало (рабочее):**
+```sql
+USING ((auth.uid())::text = (user_id)::text)
+WITH CHECK ((auth.uid())::text = (user_id)::text)
+```
+
+Приведение типов гарантирует, что UUID из auth.uid() сравнивается с UUID из user_id корректно в Supabase.
 
 ## Автоматическое применение (PowerShell)
 
@@ -119,4 +125,5 @@ cd scripts
 
 ## Полная документация
 
-Смотрите [RLS_FIX_GUIDE.md](./docs/RLS_FIX_GUIDE.md) для подробной информации о RLS политиках.
+Смотрите [APPLY_RLS_FIX.md](./APPLY_RLS_FIX.md) для пошагового применения.
+Смотрите [RLS_FIX_GUIDE.md](./docs/RLS_FIX_GUIDE.md) для технических деталей.
