@@ -15,14 +15,11 @@ API Routes для frontend — Supabase Auth + Ключи + Чат
 
 from fastapi import APIRouter, HTTPException, Depends, Header
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
-from core.input_validation import APIKeyCreate, APIKeyUpdate, UserRegister, UserLogin, ChatRequest
-from typing import Generic, TypeVar
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, List, Dict, Any, Generic, TypeVar
 from datetime import datetime
 import logging
 import uuid
-import traceback
 
 logger = logging.getLogger("padplus")
 import hashlib
@@ -43,6 +40,16 @@ router = APIRouter(prefix="/api/v1", tags=["Frontend API"])
 # МОДЕЛИ ДАННЫХ
 # ============================================================================
 
+class UserRegister(BaseModel):
+    email: str
+    password: str
+    full_name: Optional[str] = None
+
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
 
 class UserResponse(BaseModel):
     id: str
@@ -52,6 +59,20 @@ class UserResponse(BaseModel):
     created_at: str
 
 
+class APIKeyCreate(BaseModel):
+    provider: str
+    api_key: str
+    name: Optional[str] = None
+    model_preference: str = "auto"
+    is_default: bool = False
+
+
+class APIKeyUpdate(BaseModel):
+    api_key: Optional[str] = None  # Для обновления самого ключа
+    name: Optional[str] = None
+    model_preference: Optional[str] = None
+    is_default: Optional[bool] = None
+    is_active: Optional[bool] = None
 
 
 class APIKeyResponse(BaseModel):
@@ -65,6 +86,7 @@ class APIKeyResponse(BaseModel):
     created_at: str
     last_used_at: Optional[str] = None
     has_key: bool = True
+    is_system_configured: bool = False  # Для GigaChat системной настройки
 
 
 class ProviderResponse(BaseModel):
@@ -93,6 +115,22 @@ class PaginatedResponse(BaseModel, Generic[T]):
     has_more: bool
 
 
+class ChatRequest(BaseModel):
+    message: Optional[str] = None
+    prompt: Optional[str] = None  # Для совместимости
+    model: Optional[str] = "auto"
+    key_id: Optional[str] = None
+    provider: Optional[str] = None  # Явный провайдер от фронтенда
+    stream: bool = False
+    # Автоматическое определение быстрого/медленного режима
+    auto_mode: bool = True  # Если True — система сама определит тип запроса
+    # === COGNITIVE UX LAYER ===
+    explain: bool = False  # Если True — возвращать расширенные когнитивные мета-данные
+
+    @property
+    def text(self) -> str:
+        """Возвращает текст запроса (message или prompt)"""
+        return self.prompt or self.message or ""
 
 
 class ChatResponse(BaseModel):
@@ -397,149 +435,48 @@ async def refresh_token(refresh_token: str = Header(..., alias="X-Refresh-Token"
 # ============================================================================
 
 @router.get("/providers", response_model=List[ProviderResponse])
-async def list_providers(refresh: bool = False):
-    """
-    Список доступных провайдеров — строится из LiteLLM model_cost
-    + fallback на встроенный каталог.
-    Кэшируется на 1 час. Используйте ?refresh=true для принудительного обновления.
-    """
-    cache = get_cache_manager()
-    cache_key = "providers_list"
-
-    # Пробуем получить из кэша
-    if not refresh:
-        cached = await cache.get("providers", cache_key)
-        if cached:
-            logger.info(f"🗄️ Providers: возвращено {len(cached)} провайдеров из кэша")
-            return cached
-
-    import litellm
+async def list_providers():
+    """Список доступных провайдеров — OpenRouter и GigaChat"""
     from runtime.litellm_service import get_litellm_service
+    import os
 
-    # Метаданные провайдеров
-    PROVIDER_META = {
-        "gigachat": {
-            "name": "GigaChat", "description": "Модели GigaChat от Сбера (OAuth)",
-            "website": "https://gigachat.ru/", "is_premium": False
-        },
-        "google": {
-            "name": "Google AI Studio", "description": "Модели Gemini от Google",
-            "website": "https://aistudio.google.com", "is_premium": False
-        },
-        "groq": {
-            "name": "Groq", "description": "Быстрые открытые модели (Llama, Mistral, Gemma)",
-            "website": "https://console.groq.com", "is_premium": False
-        },
-        "openai": {
-            "name": "OpenAI", "description": "Модели GPT-4o, GPT-4o-mini, o1, o3-mini",
-            "website": "https://platform.openai.com", "is_premium": True
-        },
-        "anthropic": {
-            "name": "Anthropic", "description": "Модели Claude 3.5 Sonnet, Haiku, Opus",
-            "website": "https://console.anthropic.com", "is_premium": True
-        },
-        "openrouter": {
-            "name": "OpenRouter", "description": "Единый API для 100+ моделей",
-            "website": "https://openrouter.ai", "is_premium": True
-        },
-        "mistral": {
-            "name": "Mistral AI", "description": "Модели Mistral Large, Medium, Small",
-            "website": "https://console.mistral.ai", "is_premium": True
-        },
-        "cohere": {
-            "name": "Cohere", "description": "Модели Command R+, Command R",
-            "website": "https://cohere.com", "is_premium": True
-        },
-        "deepseek": {
-            "name": "DeepSeek", "description": "Модели DeepSeek Chat, Coder, Reasoner",
-            "website": "https://platform.deepseek.com", "is_premium": False
-        },
-        "xai": {
-            "name": "xAI Grok", "description": "Модели Grok-2, Grok-2 Vision",
-            "website": "https://x.ai", "is_premium": True
-        },
-        "ollama": {
-            "name": "Ollama (Local)", "description": "Локальные модели (Llama, Mistral, CodeLlama)",
-            "website": "https://ollama.ai", "is_premium": False
-        },
-        "azure": {
-            "name": "Azure OpenAI", "description": "Модели GPT-4, GPT-3.5 через Azure",
-            "website": "https://azure.microsoft.com", "is_premium": True
-        },
-        "together": {
-            "name": "Together AI", "description": "Открытые модели (Llama 3, Mixtral)",
-            "website": "https://together.ai", "is_premium": True
-        },
-        "fireworks": {
-            "name": "Fireworks", "description": "Быстрые открытые модели",
-            "website": "https://fireworks.ai", "is_premium": True
-        },
-        "nvidia": {
-            "name": "NVIDIA NIM", "description": "Модели через NVIDIA Inference Microservices",
-            "website": "https://nvidia.com/nim", "is_premium": True
-        },
-        "perplexity": {
-            "name": "Perplexity", "description": "Модели для поиска и ответов",
-            "website": "https://perplexity.ai", "is_premium": True
-        },
-        "ai21": {
-            "name": "AI21 Labs", "description": "Модели Jamba, Jurassic",
-            "website": "https://studio.ai21.com", "is_premium": True
-        },
-    }
-        
-    # Собираем провайдеров из litellm.model_cost
-    providers_map = {}
-    model_cost = getattr(litellm, 'model_cost', {})
+    # Проверка: есть ли глобальный GigaChat ключ в .env
+    gigachat_system_key = os.getenv("GIGACHAT_AUTH_KEY")
+    has_gigachat_system_key = bool(gigachat_system_key and gigachat_system_key.strip())
 
-    if model_cost:
-        for model_name, info in model_cost.items():
-            if '/' not in model_name:
-                continue
-            prov = model_name.split('/')[0]
-            if prov not in PROVIDER_META:
-                continue
-            if prov not in providers_map:
-                providers_map[prov] = {
-                    "id": prov,
-                    **PROVIDER_META[prov],
-                    "free_models": [],
-                }
-            # Проверяем бесплатность
-            input_cost = info.get('input_cost_per_token', 0)
-            if input_cost == 0 and model_name not in providers_map[prov]["free_models"]:
-                providers_map[prov]["free_models"].append(model_name)
+    # Только реально поддерживаемые провайдеры
+    providers = [
+        {
+            "id": "openrouter",
+            "name": "OpenRouter",
+            "description": "Универсальный роутер к 200+ моделям (GPT, Claude, Gemini, Llama и др.)",
+            "free_models": ["gpt-4o-mini", "gemini-2.0-flash", "claude-3-5-haiku"],
+            "website": "https://openrouter.ai",
+            "is_premium": False,
+            "has_system_key": False
+        },
+        {
+            "id": "huggingface",
+            "name": "HuggingFace",
+            "description": "Бесплатные открытые модели (Phi-3, Llama, Mistral, Gemma и др.)",
+            "free_models": ["microsoft/phi-3-mini-4k-instruct", "HuggingFaceH4/zephyr-7b-beta", "google/gemma-2b-it"],
+            "website": "https://huggingface.co",
+            "is_premium": False,
+            "has_system_key": False
+        },
+        {
+            "id": "gigachat",
+            "name": "GigaChat",
+            "description": "Модели от Сбера (GigaChat API)",
+            "free_models": ["GigaChat-Plus", "GigaChat-Pro"],
+            "website": "https://developers.sber.ru/docs/ru/gigachat",
+            "is_premium": False,
+            "has_system_key": has_gigachat_system_key
+        }
+    ]
+    
+    return providers
 
-    # Если LiteLLM не отдал данные — используем fallback
-    if not providers_map:
-        litellm_service = get_litellm_service()
-        fallback = litellm_service._get_fallback_models()
-        for prov, models in fallback.items():
-            if prov not in PROVIDER_META:
-                continue
-            providers_map[prov] = {
-                "id": prov,
-                **PROVIDER_META[prov],
-                "free_models": [m["id"] for m in models[:3]],
-            }
-
-    # Если и fallback пуст — возвращаем статический список
-    if not providers_map:
-        for prov, meta in PROVIDER_META.items():
-            providers_map[prov] = {
-                "id": prov,
-                **meta,
-                "free_models": [],
-            }
-
-    result = list(providers_map.values())
-
-    # Сохраняем в кэш на 1 час
-    await cache.set("providers", cache_key, result, ttl=3600)
-    logger.info(f"💾 Providers: сохранено {len(result)} провайдеров в кэш")
-
-    return result
-        
 
 # ============================================================================
 # API KEY MANAGEMENT ENDPOINTS
@@ -558,13 +495,17 @@ async def list_keys(
         offset: Смещение (по умолчанию 0)
         limit: Количество результатов (1-100, по умолчанию 50)
     """
-    from core.supabase_client import get_supabase_service
-    supabase = get_supabase_service()
+    import os
+    supabase = get_supabase()
     if not supabase:
         raise HTTPException(status_code=500, detail="БД не подключена")
     
-    user_id = str(current_user["id"])  # Преобразуем UUID в строку
-
+    user_id = current_user["id"]
+    
+    # Проверка: есть ли глобальный GigaChat ключ
+    gigachat_system_key = os.getenv("GIGACHAT_AUTH_KEY")
+    has_gigachat_system_key = bool(gigachat_system_key and gigachat_system_key.strip())
+    
     # Ограничиваем limit
     limit = min(max(limit, 1), 100)
 
@@ -574,7 +515,7 @@ async def list_keys(
             .select("*", count="exact")\
             .eq("user_id", user_id)\
             .execute()
-
+        
         total = count_result.count if hasattr(count_result, 'count') else 0
         
         # Получаем данные с пагинацией
@@ -588,28 +529,43 @@ async def list_keys(
         # Защита от None
         if not hasattr(result, 'data') or result.data is None:
             logger.warning(f"⚠️ Пустой ответ от Supabase для user_id={user_id}. Проверьте RLS политики или существование таблицы.")
-            return PaginatedResponse(
-                data=[],
-                total=0,
-                offset=offset,
-                limit=limit,
-                has_more=False
-            )
-            
-        keys = []
-        for key in result.data:
-            keys.append(APIKeyResponse(
-                id=key["id"],
-                provider=key["provider"],
-                provider_display_name=get_provider_display_name(key["provider"]),
-                name=key.get("name"),
-                model_preference=key.get("model_preference", "auto"),
-                is_default=key.get("is_default", False),
-                is_active=key.get("is_active", True),
-                created_at=key["created_at"],
-                last_used_at=key.get("last_used_at"),
-                has_key=True
-            ))
+            keys = []
+        else:
+            keys = []
+            for key in result.data:
+                keys.append(APIKeyResponse(
+                    id=key["id"],
+                    provider=key["provider"],
+                    provider_display_name=get_provider_display_name(key["provider"]),
+                    name=key.get("name"),
+                    model_preference=key.get("model_preference", "auto"),
+                    is_default=key.get("is_default", False),
+                    is_active=key.get("is_active", True),
+                    created_at=key["created_at"],
+                    last_used_at=key.get("last_used_at"),
+                    has_key=True,
+                    is_system_configured=(key["provider"] == "gigachat" and has_gigachat_system_key)
+                ))
+        
+        # Если нет ключа GigaChat у пользователя, но есть системный - добавляем виртуальный ключ
+        if has_gigachat_system_key:
+            has_user_gigachat = any(k.provider == "gigachat" for k in keys)
+            if not has_user_gigachat:
+                # Вставляем системный GigaChat ключ в начало списка
+                keys.insert(0, APIKeyResponse(
+                    id="system-gigachat",
+                    provider="gigachat",
+                    provider_display_name="GigaChat (System)",
+                    name="GigaChat (Global Config)",
+                    model_preference="GigaChat-2-Lite",
+                    is_default=total == 0,  # Default если нет других ключей
+                    is_active=True,
+                    created_at=datetime.now().isoformat(),
+                    last_used_at=None,
+                    has_key=True,
+                    is_system_configured=True
+                ))
+                total += 1
         
         return PaginatedResponse(
             data=keys,
@@ -618,30 +574,18 @@ async def list_keys(
             limit=limit,
             has_more=offset + limit < total
         )
-
+        
     except Exception as e:
         error_msg = str(e)
         logger.error(f"❌ Ошибка получения списка ключей: {error_msg}")
-        logger.error(f"🔍 Stack trace: {traceback.format_exc()}")
         
         # Обработка конкретных ошибок Supabase
-        error_lower = error_msg.lower()
-        if "table" in error_lower and ("not found" in error_lower or "does not exist" in error_lower or "42p01" in error_lower):
+        if "table not found" in error_msg.lower() or "relation does not exist" in error_msg.lower():
             raise HTTPException(status_code=404, detail="Таблица user_api_keys не найдена. Проверьте миграции базы данных.")
-        elif "permission" in error_lower or "rls" in error_lower or "42501" in error_lower:
+        elif "permission denied" in error_msg.lower() or "rls" in error_msg.lower():
             raise HTTPException(status_code=403, detail="Доступ к таблице user_api_keys запрещён. Проверьте RLS политики.")
-        elif "connection" in error_lower or "closed" in error_lower or "network" in error_lower:
-            # Возвращаем пустой список при проблемах с соединением
-            logger.warning(f"⚠️ БД недоступна для /keys, возвращаем пустой список")
-            return PaginatedResponse(
-                data=[],
-                total=0,
-                offset=offset,
-                limit=limit,
-                has_more=False
-            )
         else:
-            raise HTTPException(status_code=500, detail=f"Ошибка БД: {error_msg[:100]}")
+            raise HTTPException(status_code=500, detail=f"Ошибка получения списка ключей: {error_msg}")
 
 
 @router.post("/keys", response_model=APIKeyResponse)
@@ -650,10 +594,9 @@ async def create_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Добавление API ключа"""
-    from core.supabase_client import get_supabase_service
-    supabase = get_supabase_service()
+    supabase = get_supabase()
     encryptor = get_encryptor()
-    user_id = str(current_user["id"])  # Преобразуем UUID в строку
+    user_id = current_user["id"]
 
     logger.info(f"🔑 Creating key: provider={data.provider}, model={data.model_preference}, is_default={data.is_default}")
     logger.info(f"🔑 Raw API key length: {len(data.api_key)}, starts with: {data.api_key[:20]}...")
@@ -713,9 +656,8 @@ async def delete_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Удаление API ключа"""
-    from core.supabase_client import get_supabase_service
-    supabase = get_supabase_service()
-    user_id = str(current_user["id"])  # Преобразуем UUID в строку
+    supabase = get_supabase()
+    user_id = current_user["id"]
     
     result = supabase.table("user_api_keys")\
         .delete()\
@@ -735,9 +677,8 @@ async def set_default_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Установка ключа по умолчанию"""
-    from core.supabase_client import get_supabase_service
-    supabase = get_supabase_service()
-    user_id = str(current_user["id"])  # Преобразуем UUID в строку
+    supabase = get_supabase()
+    user_id = current_user["id"]
     
     # Сначала сбрасываем все ключи пользователя
     supabase.table("user_api_keys")\
@@ -764,13 +705,20 @@ async def update_key(
     data: APIKeyUpdate,
     current_user: dict = Depends(get_current_user)
 ):
-    """Обновление API ключа (модель, имя)"""
-    from core.supabase_client import get_supabase_service
-    supabase = get_supabase_service()
+    """Обновление API ключа (модель, имя, сам ключ)"""
+    supabase = get_supabase()
+    encryptor = get_encryptor()
     user_id = current_user["id"]
     
     # Собираем только переданные поля
     update_data = {}
+    
+    # Если передан новый ключ — шифруем его
+    if data.api_key is not None:
+        encrypted_key = encryptor.encrypt(data.api_key)
+        update_data["api_key_encrypted"] = encrypted_key
+        logger.info(f"🔑 Updating key for user {user_id}: key_id={key_id}")
+    
     if data.model_preference is not None:
         update_data["model_preference"] = data.model_preference
     if data.name is not None:
@@ -783,16 +731,30 @@ async def update_key(
     if not update_data:
         raise HTTPException(status_code=400, detail="Нет данных для обновления")
     
-    result = supabase.table("user_api_keys")\
-        .update(update_data)\
-        .eq("id", key_id)\
-        .eq("user_id", user_id)\
-        .execute()
+    try:
+        result = supabase.table("user_api_keys")\
+            .update(update_data)\
+            .eq("id", key_id)\
+            .eq("user_id", user_id)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Ключ не найден")
+        
+        logger.info(f"✅ Key updated successfully: key_id={key_id}")
+        return {"success": True, "message": "Ключ обновлён"}
     
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Ключ не найден")
-    
-    return {"success": True, "message": "Ключ обновлён"}
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"❌ Failed to update key: {error_msg}")
+        
+        if "permission denied" in error_msg.lower() or "rls" in error_msg.lower():
+            raise HTTPException(
+                status_code=403,
+                detail="Доступ запрещён. Проверьте RLS политики или доступ к ключу."
+            )
+        else:
+            raise HTTPException(status_code=500, detail=f"Ошибка обновления: {error_msg}")
 
 
 @router.post("/keys/{key_id}/test", response_model=TestKeyResponse)
@@ -801,8 +763,7 @@ async def test_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Тестирование сохранённого API ключа"""
-    from core.supabase_client import get_supabase_service
-    supabase = get_supabase_service()
+    supabase = get_supabase()
     encryptor = get_encryptor()
     user_id = current_user["id"]
     
@@ -875,72 +836,43 @@ async def test_key_direct(data: TestKeyRequest):
 # CHAT ENDPOINTS
 # ============================================================================
 
-class ChatRequestSimple(BaseModel):
-    """Упрощённый формат чата (для совместимости)"""
-    message: str
-    key_id: Optional[str] = None
-    provider: Optional[str] = "gigachat"
-    model: Optional[str] = "auto"
-    auto_mode: bool = False
-
-from fastapi import Body
-
-def _get_text(req) -> str:
-    """Получает текст из ChatRequest"""
-    if hasattr(req, 'text'):
-        return req.text
-    return ""
-
-def _get_chat_text(request) -> str:
-    """Получает текст из ChatRequest"""
-    return _get_text(request)
-
-# Простой чат endpoint (поддержка legacy формата)
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
-    body_data: dict = Body({}),
+    request: ChatRequest,
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Поддержка любого формата:
-    - Новый: {"messages": [...], "model": "..."}
-    - Простой: {"message": "...", "provider": "..."}
+    Чат с AI с автоматическим определением быстрого/медленного режима
+
+    Быстрые запросы (< 10 слов, простые паттерны):
+    - Приветствия, благодарности
+    - Короткие вопросы
+    - Ответы за 1-2 секунды
+    
+    Медленные запросы (сложные вопросы, анализ):
+    - Требуют проверки фактов (TruthLoop)
+    - Используют память (RAG)
+    - Ответы за 3-7 секунд
+    
+    Использует ключ пользователя из БД
     """
-    message = body_data.get("message")
-    messages = body_data.get("messages")
-    
-    # Преобразуем простой формат в полный
-    if message and not messages:
-        from core.input_validation import ChatMessage, ChatRequest as ChatRequestFull
-        messages = [ChatMessage(content=message, role="user")]
-        body_data["messages"] = messages
-    elif messages and message:
-        # Если оба - используем messages
-        pass
-    elif not message and not messages:
-        raise HTTPException(status_code=400, detail="message or messages required")
-    
-    # Создаём ChatRequest
-    from core.input_validation import ChatRequest as ChatRequestFull
-    request = ChatRequestFull(**body_data)
-    
-    if not request or not request.messages:
-        raise HTTPException(status_code=400, detail="message or messages required")
-    
-    # === ЛОГИКА ЧАТА ===
     from runtime.litellm_service import get_litellm_service
     from core.pipeline import get_pipeline
-    from core.supabase_client import get_supabase_service
 
-    supabase = get_supabase_service()
+    supabase = get_supabase()
     encryptor = get_encryptor()
     user_id = current_user["id"]
 
+    # Определяем какой ключ использовать
     api_key = None
     model = "auto"
     provider = None
 
+    logger.info(f"🔍 Chat request: key_id={request.key_id}, model={request.model}, provider={request.provider}")
+
     if request.key_id:
+        # Конкретный ключ
+        logger.info(f"🔑 Looking up key_id: {request.key_id}")
         result = supabase.table("user_api_keys")\
             .select("*")\
             .eq("id", request.key_id)\
@@ -949,35 +881,14 @@ async def chat(
 
         if result.data:
             key_data = result.data[0]
-            api_key = encryptor.decrypt(key_data["api_key_encrypted"])
-            provider = key_data["provider"]
-            model = key_data.get("model_preference") or "auto"
-
-        if result.data:
-            key_data = result.data[0]
             logger.info(f"✅ Key found: provider={key_data['provider']}, model={key_data.get('model_preference')}, is_default={key_data.get('is_default')}")
             api_key = encryptor.decrypt(key_data["api_key_encrypted"])
-            provider = key_data["provider"]
-            model = key_data.get("model_preference")
+            provider = key_data["provider"]  # ВСЕГДА из БД, не от фронтенда
+            model = key_data.get("model_preference") or "auto"
+        else:
+            logger.warning(f"⚠️ Key {request.key_id} not found for user {user_id}, falling back to default")
     else:
         logger.info("⚠️ No key_id provided, using default key")
-
-    # Дефолтные модели для каждого провайдера
-    DEFAULT_MODELS = {
-        "gigachat": "GigaChat-2-Lite",
-        "openai": "gpt-4o-mini",
-        "google": "gemini-2.0-flash",
-        "anthropic": "claude-3-5-haiku-20241022",
-        "cohere": "command-r",
-        "groq": "llama-3.1-70b-versatile",
-        "deepseek": "deepseek-chat",
-        "ollama": "llama3.2",
-        "openrouter": "",  # Используем модель из БД
-    }
-    
-    # Если модель пустая или "auto" - используем дефолтную
-    if not model or model == "auto":
-        model = DEFAULT_MODELS.get(provider, "") or ""
 
     if not api_key:
         # Ключ по умолчанию
@@ -992,10 +903,8 @@ async def chat(
             key_data = result.data[0]
             logger.info(f"✅ Default key found: provider={key_data['provider']}, model={key_data.get('model_preference')}")
             api_key = encryptor.decrypt(key_data["api_key_encrypted"])
-            provider = key_data["provider"]
-            model = key_data.get("model_preference")
-            if not model or model == "auto":
-                model = DEFAULT_MODELS.get(provider, "") or ""
+            provider = key_data["provider"]  # ВСЕГДА из БД
+            model = key_data.get("model_preference") or "auto"
 
     if not api_key:
         # Нет ключа у пользователя — ошибка!
@@ -1034,7 +943,7 @@ async def chat(
             # ⚡ БЫСТРЫЙ РЕЖИМ (1-2 секунды)
             litellm = get_litellm_service()
             response = await litellm.generate(
-                prompt=_get_text,
+                prompt=request.text,
                 system_prompt="Вы полезный ассистент PAD+ AI. Отвечайте кратко.",
                 api_key=api_key,
                 model=model,
@@ -1060,24 +969,20 @@ async def chat(
         else:
             # 🐌 МЕДЛЕННЫЙ РЕЖИМ (3-7 секунд, полный Pipeline)
             # === ФАЗА 1: ПЕРЕДАЁМ API КЛЮЧ В PIPELINE ===
-            # Получаем текст из messages
-            user_message = request.messages[0].content if request.messages else ""
-            
             try:
                 pipeline = get_pipeline()
                 result = await pipeline.execute(
-                    user_message=user_message,
+                    user_message=request.text,
                     context={"user_id": user_id, "key_id": request.key_id},
-                    api_key=api_key,
-                    provider=provider,
-                    model=model  # === передаём модель ===
+                    api_key=api_key,        # === ФАЗА 1: Передаём ключ ===
+                    provider=provider       # === ФАЗА 1: Передаём провайдера ===
                 )
             except Exception as pipeline_error:
                 logger.error(f"❌ Pipeline execution failed: {pipeline_error}")
                 # Fallback: если пайплайн упал - используем быстрый режим напрямую
                 litellm = get_litellm_service()
                 response = await litellm.generate(
-                    prompt=_get_text,
+                    prompt=request.text,
                     system_prompt="Вы полезный ассистент PAD+ AI.",
                     api_key=api_key,
                     model=model,
@@ -1108,7 +1013,7 @@ async def chat(
                     "last_used_at": datetime.now().isoformat()
                 }).eq("id", request.key_id).execute()
             
-            # === СОХРАНЕНИЕ ДИАЛОГА И СООБЩЕНИЙ ===
+            # === СОХРАНЕНИЕ ДИАЛОГА И СООБЩЕНИЙ (с защитой от ошибок БД) ===
             dialog_id = None
             
             try:
@@ -1116,25 +1021,25 @@ async def chat(
                     # Создаем новый диалог
                     dialog_result = supabase.table("dialogs").insert({
                         "user_id": user_id,
-                        "title": _get_text[:100],
+                        "title": request.text[:100],
                         "message_count": 2,
                         "last_message_at": datetime.now().isoformat()
                     }).execute()
-
+                    
                     if dialog_result.data:
                         dialog_id = dialog_result.data[0]["id"]
-
+                
                 if dialog_id:
                     # Сохраняем сообщение пользователя
                     supabase.table("messages").insert({
                         "dialog_id": dialog_id,
                         "role": "user",
-                        "content": _get_text,
+                        "content": request.text,
                         "model": model,
                         "provider": provider,
                         "created_at": datetime.now().isoformat()
                     }).execute()
-
+                    
                     # Сохраняем ответ ИИ
                     supabase.table("messages").insert({
                         "dialog_id": dialog_id,
@@ -1144,8 +1049,9 @@ async def chat(
                         "provider": provider,
                         "created_at": datetime.now().isoformat()
                     }).execute()
-            except Exception as save_error:
-                logger.warning(f"⚠️ Не удалось сохранить диалог: {save_error}")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось сохранить диалог/сообщения: {e}")
+                # Не прерываем выполнение — чат должен работать
             
             # === COGNITIVE UX LAYER: Преобразуем результат в полный формат ===
             # Временная фикс: пока pipeline не возвращает полный объект
@@ -1233,10 +1139,7 @@ async def get_mind_state():
     try:
         from memory.rag import get_rag
         rag = get_rag()
-        if rag is not None:
-            state["memory"]["rag"] = rag.get_stats()
-        else:
-            state["memory"]["rag"] = {"total_dialogs": 0, "status": "unavailable"}
+        state["memory"]["rag"] = rag.get_stats()
     except Exception as e:
         logger.warning(f"RAG stats error: {type(e).__name__}: {e}")
         state["memory"]["rag"] = {"total_dialogs": 0}
@@ -1607,9 +1510,8 @@ async def chat_stream(
     Потоковый чат с AI (SSE - Server Sent Events)
     """
     from runtime.litellm_service import get_litellm_service
-    from core.supabase_client import get_supabase_service
 
-    supabase = get_supabase_service()
+    supabase = get_supabase()
     encryptor = get_encryptor()
     user_id = current_user["id"]
 
@@ -1659,7 +1561,7 @@ async def chat_stream(
             litellm = get_litellm_service()
 
             async for chunk in litellm.generate_stream(
-                prompt=_get_text,
+                prompt=request.text,
                 system_prompt="Вы полезный ассистент PAD+ AI.",
                 api_key=api_key,
                 model=model,
@@ -1701,64 +1603,31 @@ async def frontend_health():
 
 
 @router.get("/models")
-async def list_models(provider: Optional[str] = None, refresh: bool = False):
+async def list_models(provider: Optional[str] = None):
     """
-    Список всех доступных моделей — с кэшированием на 1 час.
-    Используйте ?refresh=true для принудительного обновления.
-
+    Список всех доступных моделей
+    
     Args:
         provider: Опциональный фильтр по провайдеру
-        refresh: Принудительное обновление кэша
     """
-    cache = get_cache_manager()
-    cache_key = f"models_all_{provider or 'all'}"
-
-    # Пробуем получить из кэша
-    if not refresh:
-        cached = await cache.get("models", cache_key)
-        if cached:
-            logger.info(f"🗄️ Models: возвращено {len(cached.get('models', []))} моделей из кэша")
-            return cached
-
     from runtime.litellm_service import get_litellm_service
     
     litellm = get_litellm_service()
     models = litellm.get_available_models(provider)
     
-    result = {"models": models}
-
-    # Сохраняем в кэш на 1 час
-    await cache.set("models", cache_key, result, ttl=3600)
-    logger.info(f"💾 Models: сохранено {len(models)} моделей в кэш")
-
-    return result
+    return {"models": models}
 
 
 @router.get("/providers/{provider_id}/models")
-async def list_provider_models(
-    provider_id: str,
-    current_user: dict = Depends(get_current_user),
-    refresh: bool = False
-):
+async def list_provider_models(provider_id: str, current_user: dict = Depends(get_current_user)):
     """
-    Список моделей конкретного провайдера — загружает АКТУАЛЬНЫЕ модели через LiteLLM.
-    Кэшируется на 1 час. Используйте ?refresh=true для принудительного обновления.
+    Список моделей конкретного провайдера — загружает АКТУАЛЬНЫЕ модели через LiteLLM
     """
-    cache = get_cache_manager()
-    cache_key = f"provider_models_{provider_id}"
-
-    # Пробуем получить из кэша
-    if not refresh:
-        cached = await cache.get("models", cache_key)
-        if cached:
-            logger.info(f"🗄️ Provider models ({provider_id}): возвращено {len(cached.get('models', []))} моделей из кэша")
-            return cached
-
     from runtime.litellm_service import get_litellm_service
     from core.encryption import get_encryptor
 
     supabase = get_supabase()
-    user_id = str(current_user["id"])  # Преобразуем UUID в строку
+    user_id = current_user["id"]
     encryptor = get_encryptor()
 
     # Получаем API ключ пользователя для этого провайдера
@@ -1776,57 +1645,78 @@ async def list_provider_models(
     litellm_service = get_litellm_service()
     models = litellm_service.get_available_models(provider_id)
 
-    # Если моделей мало — пробуем загрузить напрямую через LiteLLM
-    if len(models) < 5 and api_key:
-        try:
-            from litellm import get_model_info
-            # Пробуем получить информацию о популярных моделях
-            popular_models = {
-                'openai': ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1', 'o3-mini'],
-                'google': ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-                'anthropic': ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
-                'groq': ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant'],
-                'deepseek': ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'],
-                'mistral': ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest'],
-                'xai': ['grok-2', 'grok-2-vision'],
-                'cohere': ['command-r-plus', 'command-r'],
+    # Fallback модели для всех популярных провайдеров
+    fallback_models = {
+        'openai': [
+            {'id': f'openai/{m}', 'name': m, 'max_tokens': 128000, 'supports_vision': 'vision' in m.lower(), 'supports_function_calling': True, 'cost': 'low'}
+            for m in ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1', 'o1-mini', 'o3-mini', 'gpt-4', 'gpt-3.5-turbo']
+        ],
+        'google': [
+            {'id': f'google/{m}', 'name': m, 'max_tokens': 1048576, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'low'}
+            for m in ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b']
+        ],
+        'anthropic': [
+            {'id': f'anthropic/{m}', 'name': m, 'max_tokens': 200000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'medium'}
+            for m in ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307']
+        ],
+        'groq': [
+            {'id': f'groq/{m}', 'name': m, 'max_tokens': 131072, 'supports_vision': 'vision' in m.lower() or 'llama-3.2' in m, 'supports_function_calling': True, 'cost': 'free'}
+            for m in ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'llama-3.2-1b-preview', 'llama-3.2-3b-preview', 'llama-3.2-11b-vision-preview', 'llama-3.2-90b-vision-preview', 'gemma2-9b-it', 'mixtral-8x7b-32768']
+        ],
+        'deepseek': [
+            {'id': f'deepseek/{m}', 'name': m, 'max_tokens': 128000, 'supports_vision': False, 'supports_function_calling': True, 'cost': 'free'}
+            for m in ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner']
+        ],
+        'mistral': [
+            {'id': f'mistral/{m}', 'name': m, 'max_tokens': 128000, 'supports_vision': False, 'supports_function_calling': True, 'cost': 'low'}
+            for m in ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest', 'open-mistral-nemo', 'codestral-latest']
+        ],
+        'xai': [
+            {'id': f'xai/{m}', 'name': m, 'max_tokens': 131072, 'supports_vision': 'vision' in m.lower(), 'supports_function_calling': True, 'cost': 'medium'}
+            for m in ['grok-2', 'grok-2-vision', 'grok-beta']
+        ],
+        'cohere': [
+            {'id': f'cohere/{m}', 'name': m, 'max_tokens': 128000, 'supports_vision': False, 'supports_function_calling': True, 'cost': 'medium'}
+            for m in ['command-r-plus', 'command-r', 'command', 'command-light']
+        ],
+        'ollama': [
+            {'id': f'ollama/{m}', 'name': m, 'max_tokens': 8192, 'supports_vision': False, 'supports_function_calling': False, 'cost': 'free'}
+            for m in ['llama3.2', 'llama3.1', 'mistral', 'codellama', 'phi3', 'gemma2']
+        ],
+        'gigachat': [
+            {'id': f'gigachat/{m}', 'name': m, 'max_tokens': 8192, 'supports_vision': False, 'supports_function_calling': False, 'cost': 'free'}
+            for m in ['GigaChat', 'GigaChat-Pro', 'GigaChat-Plus']
+        ],
+        'openrouter': [
+            {'id': f'openrouter/{m}', 'name': m, 'max_tokens': 128000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'low'}
+            for m in ['auto', 'google/gemini-2.0-flash', 'meta-llama/llama-3.1-70b-instruct', 'anthropic/claude-3.5-sonnet']
+        ]
+    }
+
+    # Если моделей мало или нет вообще — добавляем fallback
+    if len(models) < 10:
+        if provider_id in fallback_models:
+            for fallback_model in fallback_models[provider_id]:
+                if not any(m["id"] == fallback_model["id"] for m in models):
+                    models.append(fallback_model)
+            logger.info(f"✅ Добавлено {len(fallback_models[provider_id])} fallback моделей для {provider_id}")
+
+    # Если всё ещё нет моделей — возвращаем пустой список с сообщением
+    if not models:
+        models = [
+            {
+                "id": f"{provider_id}/auto",
+                "name": "Auto (выбор модели)",
+                "provider": provider_id,
+                "max_tokens": 4096,
+                "supports_vision": False,
+                "supports_function_calling": True,
+                "cost": "unknown",
+                "note": "Добавьте API ключ для получения списка моделей"
             }
+        ]
 
-            if provider_id in popular_models:
-                for model_name in popular_models[provider_id]:
-                    full_name = f"{provider_id}/{model_name}"
-                    if not any(m["id"] == full_name for m in models):
-                        try:
-                            info = get_model_info(full_name)
-                            models.append({
-                                "id": full_name,
-                                "name": model_name,
-                                "provider": provider_id,
-                                "max_tokens": info.get('max_tokens', 4096),
-                                "supports_vision": info.get('supports_vision', False),
-                                "supports_function_calling": info.get('supports_function_calling', True),
-                                "cost": 'unknown',
-                            })
-                        except Exception:
-                            models.append({
-                                "id": full_name,
-                                "name": model_name,
-                                "provider": provider_id,
-                                "max_tokens": 4096,
-                                "supports_vision": False,
-                                "supports_function_calling": True,
-                                "cost": 'unknown',
-                            })
-        except Exception as e:
-            logger.warning(f"⚠️ Не удалось загрузить модели для {provider_id}: {e}")
-
-    result = {"models": models}
-
-    # Сохраняем в кэш на 1 час
-    await cache.set("models", cache_key, result, ttl=3600)
-    logger.info(f"💾 Provider models ({provider_id}): сохранено {len(models)} моделей в кэш")
-
-    return result
+    return {"models": models}
 
 
 # ============================================================================
