@@ -19,42 +19,16 @@ const clearCache = (providerId) => {
   } catch {}
 };
 
-// Fallback: актуальные провайдеры LiteLLM (если API недоступен)
+// Fallback: актуальные провайдеры (только 2 основных)
 const fallbackProviders = [
-  { id: 'gigachat', name: 'GigaChat', icon: '🇷🇺', models: 2, latency: 'Low', cost: 'Medium', type: 'OAuth', free_models: ['gigachat/GigaChat-2-Lite'] },
-  { id: 'google', name: 'Google Gemini', icon: '🔮', models: 3, latency: 'Low', cost: 'Medium', type: 'API Key', free_models: ['gemini-2.0-flash', 'gemini-2.0-flash-lite'] },
-  { id: 'groq', name: 'Groq', icon: '⚡', models: 3, latency: 'Ultra', cost: 'Low', type: 'API Key', free_models: ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile'] },
-  { id: 'openai', name: 'OpenAI', icon: '🟢', models: 4, latency: 'Low', cost: 'High', type: 'API Key', free_models: [] },
-  { id: 'anthropic', name: 'Anthropic Claude', icon: '🧠', models: 3, latency: 'Medium', cost: 'High', type: 'API Key', free_models: [] },
-  { id: 'openrouter', name: 'OpenRouter', icon: '🌐', models: 5, latency: 'Medium', cost: 'Medium', type: 'API Key', free_models: [] },
-  { id: 'mistral', name: 'Mistral AI', icon: '🌫️', models: 3, latency: 'Low', cost: 'Medium', type: 'API Key', free_models: [] },
-  { id: 'cohere', name: 'Cohere', icon: '🟣', models: 3, latency: 'Medium', cost: 'Medium', type: 'API Key', free_models: [] },
-  { id: 'deepseek', name: 'DeepSeek', icon: '🔍', models: 3, latency: 'Medium', cost: 'Free', type: 'API Key', free_models: ['deepseek-chat'] },
-  { id: 'xai', name: 'xAI Grok', icon: '🧮', models: 2, latency: 'Medium', cost: 'High', type: 'API Key', free_models: [] },
-  { id: 'ollama', name: 'Ollama (Local)', icon: '🦙', models: 3, latency: 'None', cost: 'Free', type: 'Local', free_models: ['llama3.2', 'mistral'] },
-  { id: 'azure', name: 'Azure OpenAI', icon: '🔵', models: 2, latency: 'Low', cost: 'High', type: 'API Key', free_models: [] },
-  { id: 'together', name: 'Together AI', icon: '🤝', models: 2, latency: 'Medium', cost: 'Medium', type: 'API Key', free_models: [] },
-  { id: 'fireworks', name: 'Fireworks', icon: '🎆', models: 1, latency: 'Medium', cost: 'Free', type: 'API Key', free_models: [] },
-  { id: 'nvidia', name: 'NVIDIA NIM', icon: '🟩', models: 2, latency: 'Low', cost: 'High', type: 'API Key', free_models: [] },
+  { id: 'openrouter', name: 'OpenRouter', icon: '🌐', models: ['meta-llama/llama-3.1-8b-instruct:free', 'microsoft/phi-3-mini-4k-instruct:free', 'openrouter/auto'], model_count: 5, latency: 'Medium', cost: 'Medium', type: 'API Key', free_models: ['meta-llama/llama-3.1-8b-instruct:free'] },
+  { id: 'gigachat', name: 'GigaChat', icon: '🇷🇺', models: ['GigaChat', 'GigaChat-Pro', 'GigaChat-Plus'], model_count: 3, latency: 'Low', cost: 'Medium', type: 'OAuth', free_models: ['GigaChat-2-Lite'] },
 ];
 
-// Fallback: модели по провайдерам
+// Fallback: модели по провайдерам (только 2 основных)
 const fallbackModels = {
-  gigachat: ['GigaChat-2-Lite', 'GigaChat-2-Pro', 'GigaChat-Max'],
-  google: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-  groq: ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1', 'o3-mini'],
-  anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
-  openrouter: ['openrouter/auto', 'openai/gpt-4o', 'anthropic/claude-3-5-sonnet'],
-  mistral: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest'],
-  cohere: ['command-r-plus', 'command-r', 'command'],
-  deepseek: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'],
-  xai: ['grok-2', 'grok-2-vision'],
-  ollama: ['llama3.2', 'mistral', 'codellama'],
-  azure: ['gpt-4o', 'gpt-4', 'gpt-35-turbo'],
-  together: ['meta-llama/Llama-3-70b', 'mistralai/Mixtral-8x7B'],
-  fireworks: ['accounts/fireworks/models/llama-v3-70b-instruct'],
-  nvidia: ['meta/llama3-70b-instruct', 'mistralai/mistral-large'],
+  openrouter: ['meta-llama/llama-3.1-8b-instruct:free', 'microsoft/phi-3-mini-4k-instruct:free', 'openrouter/auto'],
+  gigachat: ['GigaChat', 'GigaChat-Pro', 'GigaChat-Plus'],
 };
 
 // Быстрый старт шаги
@@ -118,10 +92,18 @@ export default function ProvidersPage() {
         // Обогащаем данные fallback-иконками если нужно
         const enriched = data.map(p => {
           const fallback = fallbackProviders.find(fp => fp.id === p.id);
+          const providerModels = Array.isArray(p.models)
+            ? p.models
+            : Array.isArray(p.free_models)
+              ? p.free_models
+              : Array.isArray(fallback?.models)
+                ? fallback.models
+                : [];
           return {
             ...p,
             icon: fallback?.icon || '🔗',
-            models: p.free_models?.length || fallback?.models || 0,
+            models: providerModels,
+            model_count: providerModels.length || (typeof fallback?.model_count === 'number' ? fallback.model_count : 0),
             latency: fallback?.latency || 'Medium',
             cost: fallback?.cost || 'Medium',
             type: fallback?.type || 'API Key',
@@ -168,13 +150,16 @@ export default function ProvidersPage() {
         const arr = Array.isArray(keysData) ? keysData : [];
         console.log('🔄 fetchKeys keys count:', arr.length);
         setKeys(arr);
+        return arr;
       } else {
         console.warn('🔄 fetchKeys failed:', response.status);
         setKeys([]);
+        return [];
       }
     } catch (error) {
       console.error('🔄 Failed to fetch keys:', error);
       setKeys([]);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -338,8 +323,22 @@ export default function ProvidersPage() {
         method: 'POST',
       });
       if (response.ok) {
-        await fetchKeys();
-        // Отправляем событие для обновления в App.jsx
+        const updatedKeys = await fetchKeys();
+        const defaultKey = updatedKeys?.find(k => k.id === keyId) || updatedKeys?.find(k => k.is_default);
+        if (defaultKey) {
+          window.dispatchEvent(new CustomEvent('model-changed', {
+            detail: {
+              id: defaultKey.model_preference || 'auto',
+              name: defaultKey.model_preference === 'auto'
+                ? `${defaultKey.provider_display_name} (Auto)`
+                : defaultKey.model_preference,
+              keyId: defaultKey.id,
+              provider: defaultKey.provider,
+              providerName: defaultKey.provider_display_name,
+              isDefault: true,
+            }
+          }));
+        }
         window.dispatchEvent(new CustomEvent('keys-updated'));
       }
     } catch (error) {
@@ -600,7 +599,7 @@ export default function ProvidersPage() {
                         <div>
                           <h4 className="font-medium">{provider.name}</h4>
                           <div className="flex items-center gap-2 text-xs text-gray-400">
-                            <span>{provider.models} models</span>
+                            <span>{Array.isArray(provider.models) ? provider.models.length : provider.model_count || provider.models} models</span>
                             <span>•</span>
                             <span className={getLatencyColor(provider.latency)}>{provider.latency}</span>
                             <span>•</span>
@@ -699,7 +698,7 @@ export default function ProvidersPage() {
                               </option>
                             ))
                           ) : (
-                            litellmProviders.find(p => p.id === editingKey.provider)?.models.map(m => (
+                            (Array.isArray(fallbackModels[editingKey.provider]) ? fallbackModels[editingKey.provider] : []).map(m => (
                               <option key={m} value={m}>{m}</option>
                             ))
                           )}
@@ -735,6 +734,9 @@ export default function ProvidersPage() {
                 <CardTitle>Connect {selectedProvider.name}</CardTitle>
               </CardHeader>
               <CardContent>
+                <div className="mb-4 p-3 rounded-lg bg-[#111827] border border-[#374151] text-sm text-gray-300">
+                  У этого провайдера пока нет сохранённых ключей. Заполните форму, чтобы подключить его и начать работу.
+                </div>
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   const formData = new FormData(e.target);
@@ -852,7 +854,9 @@ export default function ProvidersPage() {
                               </option>
                             ))
                           ) : (
-                            selectedProvider.models.map(m => <option key={m} value={m}>{m}</option>)
+                            (Array.isArray(selectedProvider.models) ? selectedProvider.models : fallbackModels[selectedProvider.id] || []).map(m => (
+                              <option key={m} value={m}>{m}</option>
+                            ))
                           )}
                         </select>
                         <button

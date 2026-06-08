@@ -1,14 +1,13 @@
 """
-🔒 СТАБИЛЬНЫЙ BACKEND - МИНИМАЛЬНАЯ ВЕРСИЯ
+🔒 DEPRECATED — ИСПОЛЬЗУЙТЕ main.py ВМЕСТО ЭТОГО
 
-Только базовая функциональность:
-✅ Авторизация
-✅ API эндпоинты
-✅ CORS
-❌ Без зависимостей которые могут падать
-❌ Без мониторинга
-❌ Без кэша
-❌ Без RAG/Chroma/LiteLLM
+Этот файл больше не используется в production (render.yaml → main:app).
+Оставлен для отладки без Supabase/Redis.
+
+Вся функциональность перенесена в:
+- backend/api/frontend_routes.py (основные роуты)
+- backend/core/ (авторизация через Supabase)
+- backend/runtime/ (LLM сервисы)
 """
 
 # === ОТКЛЮЧЕНИЕ ПРОКСИ ДЛЯ ВСЕХ API ЗАПРОСОВ ===
@@ -651,22 +650,22 @@ async def get_providers():
 
 @app.get("/api/v1/providers/{provider_id}/models")
 async def get_provider_models(provider_id: str):
-    """Список моделей конкретного провайдера через LiteLLM"""
+    """Список моделей конкретного провайдера через LLMService"""
     try:
-        # Используем LiteLLM для получения актуальных моделей
-        from runtime.litellm_service import get_litellm_service
+        # Используем LLMService для получения моделей
+        from runtime.llm_service import get_llm_service
         
-        litellm_service = get_litellm_service()
-        models = litellm_service.get_available_models(provider_id)
+        llm_service = get_llm_service()
+        models = llm_service.get_available_models(provider_id)
         
-        # Если LiteLLM вернул модели - используем их
+        # Если LLMService вернул модели - используем их
         if models:
-            logger.info(f"✅ Получено {len(models)} актуальных моделей от {provider_id} через LiteLLM")
+            logger.info(f"✅ Получено {len(models)} актуальных моделей от {provider_id} через LLMService")
             return {"models": models}
     except Exception as e:
-        logger.warning(f"⚠️ Не удалось получить модели через LiteLLM: {e}")
+        logger.warning(f"⚠️ Не удалось получить модели через LLMService: {e}")
     
-    # Fallback: базовый набор моделей если LiteLLM недоступен
+    # Fallback: базовый набор моделей если LLMService недоступен
     fallback_models = {
         "gigachat": [
             {"id": "gigachat/GigaChat", "name": "GigaChat", "max_tokens": 4096, "supports_vision": False},
@@ -811,8 +810,8 @@ async def get_mind_state():
             "cache": "disabled",
             "monitoring": "active",
             "rag": "disabled",
-            "chroma": "disabled",
-            "litellm": "active"
+
+            "llm_service": "active"
         },
         "model": {
             "id": "auto",
@@ -1064,7 +1063,7 @@ async def get_recent_events(limit: int = 20):
 
 @app.post("/api/v1/chat")
 async def chat(request: Request, chat_request: ChatRequest):
-    """Обработка чата через LiteLLM"""
+    """Обработка чата через LLMService"""
     try:
         # Проверка авторизации
         authorization = request.headers.get("Authorization")
@@ -1126,15 +1125,15 @@ async def chat(request: Request, chat_request: ChatRequest):
         
         logger.info(f"🚀 Chat: provider={provider}, model={model}, message_length={len(chat_request.message)}")
         
-        # === ИСПОЛЬЗУЕМ LITELLM ДЛЯ ГЕНЕРАЦИИ ОТВЕТА ===
+        # === ИСПОЛЬЗУЕМ LLMService ДЛЯ ГЕНЕРАЦИИ ОТВЕТА ===
         try:
-            from runtime.litellm_service import get_litellm_service
+            from runtime.llm_service import get_llm_service
             
-            litellm = get_litellm_service()
+            llm_service = get_llm_service()
             
             # Выбираем модель если не указана
             if not model or model == "auto":
-                # Дефолтные модели для провайдеров (LiteLLM формат)
+                # Дефолтные модели для провайдеров
                 default_models = {
                     "gigachat": "gigachat/GigaChat",
                     "openai": "gpt-4o-mini",
@@ -1184,7 +1183,7 @@ async def chat(request: Request, chat_request: ChatRequest):
                 "vertex_ai": None  # Для Vertex AI используется специальная конфигурация
             }
             
-            # Устанавливаем переменные окружения для LiteLLM
+            # Устанавливаем переменные окружения для провайдера
             api_base = api_bases.get(provider)
             if api_base:
                 env_var_name = f"{provider.upper()}_API_BASE"
@@ -1195,8 +1194,8 @@ async def chat(request: Request, chat_request: ChatRequest):
             if provider == "openrouter":
                 os.environ["OPENROUTER_API_KEY"] = api_key
             
-            # Генерируем ответ через LiteLLM
-            ai_response = await litellm.generate(
+            # Генерируем ответ через LLMService
+            ai_response = await llm_service.generate(
                 prompt=chat_request.message,
                 system_prompt="Вы полезный AI ассистент PAD+. Отвечайте на русском языке, будьте вежливы и конструктивны.",
                 api_key=api_key,

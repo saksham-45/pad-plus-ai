@@ -269,11 +269,14 @@ async def get_current_user_safe(
         profile = None
     
     # 6. Формируем результат
+    access_token_value = new_access_token or access_token
     result = {
         "auth_user": user,
         "profile": profile,
         "id": user.id,
-        "email": user.email
+        "email": user.email,
+        "access_token": access_token_value,
+        "authorization": f"Bearer {access_token_value}"
     }
     
     # Добавляем новый токен, если он был обновлен

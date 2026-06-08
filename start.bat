@@ -42,14 +42,31 @@ echo.
 :: Запускаем backend
 echo [2/5] Запуск Backend (порт 8080)...
 cd /d "%~dp0backend"
-start "PAD+ AI Backend" cmd /k "echo Backend запускается... && uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
+set "PYTHON_EXE=%~dp0venv\Scripts\python.exe"
+if exist "%PYTHON_EXE%" (
+    start "PAD+ AI Backend" cmd /k "echo Backend запускается... && set PORT=8080 && "%PYTHON_EXE%" -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
+) else (
+    start "PAD+ AI Backend" cmd /k "echo Backend запускается... && set PORT=8080 && uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
+)
 cd /d "%~dp0"
 
-:: Ждём пока backend полностью загрузится (теперь нужно больше времени)
-echo   ⏳ Ожидание запуска backend (15 секунд)...
-timeout /t 15 >nul
-echo   ✓ Backend готов
-echo.
+:: Ждём пока backend загрузится
+echo   ⏳ Ожидание запуска backend...
+timeout /t 5 >nul
+
+:: Проверяем что backend действительно готов
+echo   🔄 Проверка доступности backend...
+for /l %%i in (1,1,10) do (
+    curl -s http://127.0.0.1:8080/health >nul 2>&1 && (
+        echo   ✓ Backend готов!
+        goto :backend_ready
+    )
+    echo   ⏳ Попытка %%i/10...
+    timeout /t 2 >nul
+)
+
+echo   ⚠ Backend не ответил за 25 секунд, продолжаем...
+:backend_ready
 
 :: Запускаем frontend
 echo [3/5] Запуск Frontend (порт 5174)...

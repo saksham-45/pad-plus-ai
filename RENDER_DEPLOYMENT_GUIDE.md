@@ -221,7 +221,7 @@ curl -H "Origin: https://your-frontend.onrender.com" https://your-app.onrender.c
 
 ### Проблема: Build Timeout (> 15 минут)
 
-**Причина:** npm install слишком долгий или ChromaDB инициализируется
+**Причина:** npm install слишком долгий
 
 **Решение:**
 1. Убедитесь что RAG инициализируется в фоне (уже исправлено)

@@ -434,8 +434,8 @@ class CognitiveHealthMonitor:
     async def check_llm(self) -> bool:
         """Проверяет доступность LLM сервиса"""
         try:
-            from runtime.litellm_service import get_litellm_service
-            service = get_litellm_service()
+            from runtime.llm_service import get_llm_service
+            service = get_llm_service()
             # Проверяем, что Circuit Breaker не открыт
             if hasattr(service, '_circuit_breaker'):
                 return service._circuit_breaker.is_closed() or service._circuit_breaker.is_half_open()

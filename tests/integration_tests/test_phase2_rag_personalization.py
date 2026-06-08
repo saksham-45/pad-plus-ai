@@ -81,7 +81,7 @@ class TestRAGPostgreSQL:
     """Тесты PostgreSQL-реализации RAG"""
 
     def test_rag_initialization(self):
-        """Проверяет, что RAG инициализируется без ChromaDB"""
+        """Проверяет, что RAG инициализируется без внешних зависимостей"""
         from backend.memory.rag import RAGMemory
         
         rag = RAGMemory()
@@ -142,8 +142,8 @@ class TestRAGIntegration:
     """Интеграционные тесты RAG"""
 
     @pytest.mark.asyncio
-    async def test_rag_no_chromadb_import(self):
-        """Проверяет, что ChromaDB не импортируется"""
+    async def test_rag_clean_imports(self):
+        """Проверяет, что RAG не содержит мёртвых импортов"""
         from backend.memory import rag as rag_module
         
         assert not hasattr(rag_module, 'chromadb')

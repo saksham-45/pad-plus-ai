@@ -186,6 +186,6 @@ SELECT auth.uid();
 
 ## См. также
 
-- [SECURITY_AUDIT_REPORT.md](./SECURITY_AUDIT_REPORT.md) — Отчёт по безопасности
+- [SECURITY_AUDIT_REPORT.md](./archive/SECURITY_AUDIT_REPORT.md) — Отчёт по безопасности (архив)
 - [API.md](./API.md) — Документация API
 - [QUICK_DEPLOY_GUIDE.md](./QUICK_DEPLOY_GUIDE.md) — Инструкция по деплою

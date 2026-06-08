@@ -112,7 +112,7 @@ class APIKeyCreate(BaseModel):
     
     @validator('provider')
     def validate_provider(cls, v):
-        allowed_providers = ['openai', 'anthropic', 'google', 'groq', 'ollama', 'gigachat', 'openrouter']
+        allowed_providers = ['openrouter', 'gigachat']
         if v.lower() not in allowed_providers:
             raise ValueError(f'Provider must be one of: {", ".join(allowed_providers)}')
         return v.lower()
@@ -255,7 +255,7 @@ class ProviderConfig(BaseModel):
     
     @validator('provider_id')
     def validate_provider_id(cls, v):
-        allowed_providers = ['openai', 'anthropic', 'google', 'groq', 'ollama', 'gigachat', 'openrouter']
+        allowed_providers = ['openrouter', 'gigachat']
         if v.lower() not in allowed_providers:
             raise ValueError(f'Provider must be one of: {", ".join(allowed_providers)}')
         return v.lower()

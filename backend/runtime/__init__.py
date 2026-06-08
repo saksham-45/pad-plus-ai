@@ -1,20 +1,20 @@
-"""Runtime module — LiteLLM Service"""
+"""Runtime module — LLM Service (OpenRouter, GigaChat)"""
 
-from .litellm_service import (
-    LiteLLMService,
+from .llm_service import (
+    LLMService,
     LLMResponse,
-    get_litellm_service
+    get_llm_service,
 )
 
 from .session_provider_manager import (
     SessionProviderManager,
-    get_session_manager
+    get_session_manager,
 )
 
 __all__ = [
-    'LiteLLMService',
+    'LLMService',
     'LLMResponse',
-    'get_litellm_service',
+    'get_llm_service',
     'SessionProviderManager',
-    'get_session_manager'
+    'get_session_manager',
 ]

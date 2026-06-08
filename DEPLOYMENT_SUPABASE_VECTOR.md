@@ -142,46 +142,40 @@ SELECT * FROM rag_stats;
 
 ## 🔄 Шаг 6: Миграция данных (опционально)
 
-Если у вас уже есть данные в ChromaDB:
+Если у вас уже есть данные в локальном RAG:
 
 ```python
-# scripts/migrate_chromadb_to_supabase.py
-from memory.rag import get_rag as get_chromadb_rag
+# scripts/migrate_rag_to_supabase.py
+from memory.rag import get_rag as get_local_rag
 from memory.rag_supabase import get_rag as get_supabase_rag
 
-# 1. Получить данные из ChromaDB
-chromadb = get_chromadb_rag()
-chromadb_results = chromadb.collection.get(include=["embeddings", "documents", "metadatas"])
+# 1. Получить данные из локального RAG
+local_rag = get_local_rag()
+local_results = local_rag.collection.get(include=["embeddings", "documents", "metadatas"])
 
 # 2. Импорт в Supabase
 supabase = get_supabase_rag()
-for i, doc in enumerate(chromadb_results["documents"]):
+for i, doc in enumerate(local_results["documents"]):
     supabase.add_embedding(
         text=doc,
-        embedding=chromadb_results["embeddings"][i],
-        metadata=chromadb_results["metadatas"][i] if chromadb_results["metadatas"] else None
+        embedding=local_results["embeddings"][i],
+        metadata=local_results["metadatas"][i] if local_results["metadatas"] else None
     )
 
-print(f"✅ Мигрировано {len(chromadb_results['documents'])} embeddings")
+print(f"✅ Мигрировано {len(local_results['documents'])} embeddings")
 ```
 
 ---
 
-## ⚙️ Откат к ChromaDB
+## ⚙️ Откат изменений
 
 Если что-то пошло не так:
 
-### Вариант 1: Через переменную окружения
+### Через переменную окружения
 
 ```bash
 # В панели Render удалите или установите:
 USE_SUPABASE_VECTOR=false
-```
-
-### Вариант 2: В коде
-
-```python
-# В memory/rag.py останется ChromaDB как fallback
 ```
 
 ---
@@ -201,7 +195,6 @@ SELECT * FROM search_rag_embeddings(
 ```
 
 ### Ожидается:
-- **ChromaDB**: 10-50ms (локально)
 - **Supabase Vector**: 50-100ms (через сеть)
 
 ---
@@ -260,4 +253,4 @@ WITH (lists = 1000);
 
 ---
 
-**Готово!** Ваша система теперь использует Supabase Vector вместо ChromaDB.
+**Готово!** Ваша система теперь использует Supabase Vector.

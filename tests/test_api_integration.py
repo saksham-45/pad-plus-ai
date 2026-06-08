@@ -102,12 +102,7 @@ def test_api_integration():
         except Exception:
             state["rag"] = {}
         
-        try:
-            from memory.fact_memory import get_fact_memory
-            facts = get_fact_memory()
-            state["facts"] = facts.get_stats()
-        except Exception:
-            state["facts"] = {}
+        state["facts"] = state.get("rag", {})
         
         print("  ✅ Mind State собран:")
         print(f"     Эмоции: {len(state.get('emotion', {}))} полей")

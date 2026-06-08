@@ -3,23 +3,10 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button';
 import { apiFetch } from '../services/api';
 
-// Все доступные провайдеры (fallback для отображения имен)
+// Все доступные провайдеры (только 2 основных)
 const allProviders = [
-  { id: 'gigachat', name: 'GigaChat', icon: '🇷🇺' },
-  { id: 'google', name: 'Google Gemini', icon: '🔮' },
-  { id: 'groq', name: 'Groq', icon: '⚡' },
-  { id: 'openai', name: 'OpenAI', icon: '🟢' },
-  { id: 'anthropic', name: 'Anthropic Claude', icon: '🧠' },
   { id: 'openrouter', name: 'OpenRouter', icon: '🌐' },
-  { id: 'mistral', name: 'Mistral AI', icon: '🌫️' },
-  { id: 'cohere', name: 'Cohere', icon: '🟣' },
-  { id: 'deepseek', name: 'DeepSeek', icon: '🔍' },
-  { id: 'xai', name: 'xAI Grok', icon: '🧮' },
-  { id: 'ollama', name: 'Ollama (Local)', icon: '🦙' },
-  { id: 'azure', name: 'Azure OpenAI', icon: '🔵' },
-  { id: 'together', name: 'Together AI', icon: '🤝' },
-  { id: 'fireworks', name: 'Fireworks', icon: '🎆' },
-  { id: 'nvidia', name: 'NVIDIA NIM', icon: '🟩' },
+  { id: 'gigachat', name: 'GigaChat', icon: '🇷🇺' },
 ];
 
 export default function ConnectedProvidersPage() {

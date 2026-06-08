@@ -5,12 +5,12 @@
 Поддерживает singleton и transient зависимости.
 
 Использование:
-    from core.dependencies import container, get_fact_memory_chroma
+    from core.dependencies import container
 
     # В роутах FastAPI
     @router.post("/chat")
     async def chat(
-        fact_memory: FactMemoryChroma = Depends(get_fact_memory_chroma)
+        rag: RAGMemory = Depends(get_rag)
     ):
         ...
 """
@@ -139,7 +139,7 @@ def register_dependencies() -> None:
     from memory.semantic import SemanticMemory
     from memory.persona import PersonaMemory
     from memory.roots import RootsMemory
-    from runtime.litellm_service import LiteLLMService
+    from runtime.llm_service import LLMService
     from core.pipeline import PipelineExecutor
     from core.cache_manager import CacheManager
     from core.safety_layer import SafetyLayer
@@ -164,7 +164,7 @@ def register_dependencies() -> None:
     container.register("roots_memory", lambda: RootsMemory(), singleton=True)
     
     # Services
-    container.register("litellm_service", lambda: LiteLLMService(), singleton=True)
+    container.register("llm_service", lambda: LLMService(), singleton=True)
     container.register("pipeline", lambda: PipelineExecutor(), singleton=True)
     container.register("cache_manager", lambda: CacheManager(), singleton=True)
     
@@ -213,9 +213,9 @@ def get_roots_memory() -> RootsMemory:
     return container.get("roots_memory")
 
 
-def get_litellm_service() -> LiteLLMService:
-    """Получает LiteLLMService"""
-    return container.get("litellm_service")
+def get_llm_service() -> LLMService:
+    """Получает LLMService"""
+    return container.get("llm_service")
 
 
 def get_pipeline() -> PipelineExecutor:

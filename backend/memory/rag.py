@@ -19,19 +19,29 @@ import math
 # Создаём логгер в начале
 logger = logging.getLogger("PAD+.rag")
 
-# ChromaDB удален в пользу PostgreSQL-версии
-# Используем только PostgreSQL-реализацию RAG
 
-# Sentence Transformers для эмбеддингов
-sentence_transformers_available = False
-try:
-    from sentence_transformers import SentenceTransformer
-    sentence_transformers_available = True
 
-    logger.info("✅ Sentence Transformers доступен")
-except Exception as e:
-    logger.warning(f"⚠️ Sentence Transformers недоступен ({e})")
-    SentenceTransformer = None
+# Sentence Transformers для эмбеддингов (ленивый импорт)
+_sentence_transformer_model = None
+_sentence_transformers_available = None
+
+
+def _get_sentence_transformer():
+    global _sentence_transformer_model, _sentence_transformers_available
+    if _sentence_transformers_available is not None:
+        return _sentence_transformer_model
+
+    try:
+        from sentence_transformers import SentenceTransformer
+        _sentence_transformer_model = SentenceTransformer
+        _sentence_transformers_available = True
+        logger.info("✅ Sentence Transformers доступен")
+    except Exception as e:
+        logger.warning(f"⚠️ Sentence Transformers недоступен ({e})")
+        _sentence_transformer_model = None
+        _sentence_transformers_available = False
+
+    return _sentence_transformer_model
 
 # Константы
 CONTEXT_WINDOW = 5
@@ -338,7 +348,7 @@ def summarize_text_simple(text: str, max_length: int = 200) -> str:
 
 async def summarize_text_llm(text: str, max_length: int = 200) -> str:
     """
-    LLM-суммаризация текста через LiteLLM
+    LLM-суммаризация текста через LLMService
     
     Использует модель для создания краткого содержания
     """
@@ -394,41 +404,24 @@ class RAGMemory:
     """
     
     def __init__(self, persist_dir: str = None, use_llm_summarization: bool = False):
-        logger.info(f"📁 Инициализация RAG Memory v3.0 (PostgreSQL)")
-        
+        logger.info(f"Инициализация RAG Memory v3.0 (PostgreSQL)")
         self.use_llm_summarization = use_llm_summarization
-        
-        # Проверяем наличие PostgreSQL
+        self.conn = None
+        self.cursor = None
+        self._keywords_cache = {}
+        self._topic_stats = {}
+        self._lock = threading.Lock() if 'threading' in dir() else None
+
+        db_url = os.getenv('DATABASE_URL')
+        if not db_url:
+            logger.warning("DATABASE_URL не настроен, RAG работает без БД")
+            return
+
         try:
             import psycopg2
-            from psycopg2.extras import Json
-            db_url = os.getenv('DATABASE_URL')
-            if not db_url:
-                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
-            
-            # Добавляем таймаут подключения
-            import urllib.parse
-            parsed = urllib.parse.urlparse(db_url)
-            if 'connect_timeout' not in parsed.query:
-                # Добавляем таймаут 10 секунд
-                query_params = urllib.parse.parse_qs(parsed.query)
-                query_params['connect_timeout'] = ['10']
-                new_query = urllib.parse.urlencode(query_params, doseq=True)
-                db_url = db_url.replace(parsed.query, new_query) if parsed.query else f"{db_url}?{new_query}"
-            
-            self.conn = psycopg2.connect(db_url)
-            self.cursor = self.conn.cursor()
-            
-            # Включаем расширение pgcrypto для gen_random_uuid()
-            try:
-                self.cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
-                self.conn.commit()
-                logger.info("✅ Расширение pgcrypto включено")
-            except Exception as ext_error:
-                logger.warning(f"⚠️ Не удалось включить pgcrypto: {ext_error}")
-            
-            # Создание таблицы (без зависимости от pgvector)
-            self.cursor.execute("""
+            conn = psycopg2.connect(db_url, connect_timeout=3)
+            cursor = conn.cursor()
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS rag_dialogs (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     user_message TEXT NOT NULL,
@@ -796,83 +789,43 @@ class RAGMemory:
         return self.hybrid_search(query, n_results)
     
     def get_context(self, query: str, user_id: Optional[str] = None) -> str:
-        """
-        Формирует контекст для RAG
-        """
+        db_url = os.getenv('DATABASE_URL')
+        if not db_url:
+            return ""
+
         try:
             import psycopg2
-            from psycopg2.extras import Json
-            
-            db_url = os.getenv('DATABASE_URL')
-            if not db_url:
-                raise RuntimeError("❌ DATABASE_URL не настроен! Добавьте в .env")
-            
-            conn = psycopg2.connect(db_url)
+            conn = psycopg2.connect(db_url, connect_timeout=3)
             cursor = conn.cursor()
-            
-            # Поиск по ключевым словам и темам
-            # Используем полнотекстовый поиск через tsvector
             cursor.execute(
-                """
-                SELECT user_message, ai_response, metadata, topic, created_at
+                """SELECT user_message, ai_response, metadata, topic, created_at
                 FROM rag_dialogs
-                WHERE (
-                    user_message @@ plainto_tsquery(%s) OR 
-                    ai_response @@ plainto_tsquery(%s) OR
-                    topic ILIKE %s
-                )
-                ORDER BY created_at DESC
-                LIMIT 3
-                """,
+                WHERE (user_message @@ plainto_tsquery(%s) OR ai_response @@ plainto_tsquery(%s) OR topic ILIKE %s)
+                ORDER BY created_at DESC LIMIT 3""",
                 (query, query, f'%{query}%')
             )
-            
             rows = cursor.fetchall()
             cursor.close()
             conn.close()
-            
             dialogs = []
             for row in rows:
                 meta = row[2] if isinstance(row[2], dict) else json.loads(row[2]) if row[2] else {}
-                dialogs.append({
-                    'metadata': meta,
-                    'combined_score': 0.5,
-                    'topic': row[3] if row[3] else 'общее',
-                    'timestamp': row[4].isoformat() if row[4] else datetime.now().isoformat()
-                })
-                
+                dialogs.append({'metadata': meta, 'combined_score': 0.5, 'topic': row[3] if row[3] else 'общее', 'timestamp': row[4].isoformat() if row[4] else datetime.now().isoformat()})
         except Exception as e:
-            logger.error(f"❌ Ошибка получения контекста из PostgreSQL: {e}")
-            # Возвращаем пустой контекст при ошибке
+            logger.error(f"Ошибка получения контекста из PostgreSQL: {e}")
             return ""
 
         if not dialogs:
             return ""
-
         relevant = [d for d in dialogs if d['combined_score'] > 0.25]
-
         if not relevant:
             return ""
 
-        context_parts = ["📚 Релевантный контекст из памяти:\n"]
-
+        context_parts = ["Релевантный контекст из памяти:\n"]
         for i, dialog in enumerate(relevant[:3], 1):
             meta = dialog['metadata']
-            user_msg = meta.get('user_message', '')
-            ai_resp = meta.get('ai_response', '')
-            topic = dialog.get('topic', 'общее')
-            
-            # Добавляем пометку о персонализации
-            owner = " (ваши данные)" if meta.get('user_id') == user_id else ""
-
-            context_parts.append(
-                f"[{i}]{owner} (тема: {topic}, score: {dialog['combined_score']:.2f})\n"
-                f"Вопрос: {user_msg}\n"
-                f"Ответ: {ai_resp}\n"
-            )
-
+            context_parts.append(f"[{i}] (тема: {dialog['topic']}, score: {dialog['combined_score']:.2f})\nВопрос: {meta.get('user_message', '')}\nОтвет: {meta.get('ai_response', '')}\n")
         context_parts.append("\nИспользуй этот контекст для ответа.\n")
-
         return "\n".join(context_parts)
     
     def search_by_topic(self, topic: str, n_results: int = 5) -> List[Dict[str, Any]]:

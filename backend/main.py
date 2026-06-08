@@ -47,8 +47,9 @@ from api import routes
 
 # Импортируем core модули ПОСЛЕ загрузки .env
 from core.supabase_client import get_supabase, check_database_connection
+from core.auth_manager import get_current_user_safe
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -106,7 +107,6 @@ async def lifespan(app: FastAPI):
     
     logger.info(f"✅ Директория данных готова: {data_dir} ({time.time()-start_time:.2f}s)")
     
-    # ChromaDB инициализация (можно отложить)
     logger.info("🧠 Инициализация RAG Memory...")
     try:
         from memory.rag import get_rag
@@ -115,6 +115,31 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ RAG Memory инициализация задерживается: {e}")
     
+    # Запуск X-Ray Broadcaster + мост TraceCollector → WS
+    xray_broadcaster = None
+    logger.info("🔬 Запуск X-Ray Broadcaster...")
+    try:
+        from core.xray import get_xray_broadcaster, get_trace_collector
+        xray_broadcaster = get_xray_broadcaster()
+        await xray_broadcaster.start()
+
+        # Единый глобальный подписчик TraceCollector → все generic WS
+        collector = get_trace_collector()
+        def _forward_xray_to_ws(event_type: str, data: dict):
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.ensure_future(manager.broadcast({
+                    "type": event_type,
+                    "data": data,
+                    "timestamp": datetime.now().isoformat()
+                }))
+            except Exception:
+                pass
+        collector.subscribe(_forward_xray_to_ws)
+        logger.info("✅ X-Ray Broadcaster запущен + мост TraceCollector→WS")
+    except Exception as e:
+        logger.warning(f"⚠️ X-Ray Broadcaster не запустился: {e}")
+
     total_time = time.time() - start_time
     logger.info(f"🚀 PAD+ AI готов к работе! (всего: {total_time:.2f}s)")
     
@@ -122,6 +147,14 @@ async def lifespan(app: FastAPI):
     
     # === SHUTDOWN ===
     logger.info("🛑 PAD+ AI останавливается...")
+
+    # Остановка X-Ray Broadcaster
+    if xray_broadcaster:
+        try:
+            await xray_broadcaster.stop()
+            logger.info("✅ X-Ray Broadcaster остановлен")
+        except Exception as e:
+            logger.warning(f"⚠️ X-Ray Broadcaster stop: {e}")
 
     # Отключение системы мониторинга
     await monitoring_system.stop_monitoring()
@@ -216,7 +249,7 @@ from core.csrf_middleware import CSRFMiddleware
 app.add_middleware(
     CSRFMiddleware,
     secret_key=csrf_secret_key,
-    cookie_secure=False,  # Включить в production (HTTPS)
+    cookie_secure=is_production,
     cookie_httponly=True,
     cookie_samesite="lax",
 )
@@ -278,8 +311,8 @@ async def force_cors_headers(request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Будет перекрыто force_cors_headers
-    allow_credentials=False,  # Будет установлено в middleware
+    allow_origins=allow_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["Content-Type", "Set-Cookie"],
@@ -305,10 +338,6 @@ app.include_router(dialog_router)
 from api.document_routes import router as document_router
 app.include_router(document_router)
 
-# Подключение роутов для управления файлами (ДОБАВЛЕНО ПОСЛЕ document_routes)
-from api.file_routes import router as file_router
-app.include_router(file_router)
-
 # Подключение X-Ray routes (система полной наблюдаемости)
 from api.xray_routes import router as xray_router
 app.include_router(xray_router)
@@ -316,6 +345,22 @@ app.include_router(xray_router)
 # Подключение Metrics routes (мониторинг и метрики)
 from api.metrics_routes import router as metrics_router
 app.include_router(metrics_router)
+
+# Подключение Memory Dashboard routes
+from api.memory_routes import router as memory_router
+app.include_router(memory_router)
+
+# Подключение Knowledge Graph routes
+from api.knowledge_routes import router as knowledge_router
+app.include_router(knowledge_router)
+
+# Подключение Feedback routes
+from api.feedback_routes import router as feedback_router
+app.include_router(feedback_router)
+
+# Подключение Debug routes (диагностика провайдеров)
+from api.debug_routes import router as debug_router
+app.include_router(debug_router)
 
 # === WEBSOCKET CONNECTION MANAGER ===
 class ConnectionManager:
@@ -371,11 +416,54 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+async def authenticate_websocket(websocket: WebSocket):
+    """Authenticate WebSocket connection before accepting it.
+    
+    Поддерживает:
+    - Authorization header (недоступен в браузерном WebSocket API)
+    - token query parameter (для браузерных клиентов)
+    """
+    # Проверяем query параметр token (браузерные WebSocket не могут ставить кастомные headers)
+    token = websocket.query_params.get("token")
+    header_auth = websocket.headers.get("authorization")
+    
+    if token:
+        # Токен из query параметра — добавляем префикс Bearer если его нет
+        if token.startswith("Bearer "):
+            authorization = token
+        else:
+            authorization = f"Bearer {token}"
+    elif header_auth:
+        authorization = header_auth
+    else:
+        authorization = None
+    
+    refresh_token = websocket.headers.get("x-refresh-token") or websocket.query_params.get("refresh_token")
+
+    if not authorization:
+        logger.warning("WebSocket auth failed: missing Authorization header or token")
+        await websocket.close(code=4401)
+        return None
+
+    try:
+        return await get_current_user_safe(
+            authorization=authorization,
+            x_refresh_token=refresh_token
+        )
+    except HTTPException as exc:
+        logger.warning(f"WebSocket auth failed: {exc.detail}")
+        await websocket.close(code=4401)
+        return None
+
+
 # === WEBSOCKET ENDPOINT ===
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket эндпоинт для real-time обновлений"""
-    # Принимаем соединение сразу без проверок для того чтобы клиент мог подключиться
+    current_user = await authenticate_websocket(websocket)
+    if not current_user:
+        return
+
     await websocket.accept()
     manager.active_connections.append(websocket)
     logger.info(f"📡 WebSocket подключен. Всего: {len(manager.active_connections)}")

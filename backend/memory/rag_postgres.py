@@ -2,7 +2,6 @@
 🧠 RAG — Retrieval-Augmented Generation v3.0 (PostgreSQL версия)
 
 Использует PostgreSQL + pgvector для векторного поиска.
-ChromaDB удалён для экономии памяти.
 """
 
 import os

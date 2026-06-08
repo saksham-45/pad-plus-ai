@@ -2,7 +2,7 @@
 
 ## 📋 Что изменилось
 
-- ❌ **Удалён ChromaDB** — больше не требует 300-400MB RAM
+- ❌ **Удалён ChromaDB** — больше не используется
 - ✅ **Используется PostgreSQL + pgvector** — экономит память
 - ✅ **Только Supabase/PostgreSQL** — как на production
 
@@ -124,7 +124,7 @@ DATABASE_URL=postgresql://user:password@host:5432/dbname
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-### Ошибка: "Chromadb not found"
+### Ошибка: Старые импорты ChromaDB
 
 **Решение:** Это значит старый код ещё в памяти. Перезапусти Python полностью.
 
@@ -132,7 +132,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 ## 📊 Преимущества
 
-| Было (ChromaDB) | Стало (PostgreSQL) |
+| Было (ChromaDB/SQLite) | Стало (PostgreSQL) |
 |----------------|-------------------|
 | ~300-400MB RAM | ~20MB RAM |
 | 1GB диск | 0MB диск |

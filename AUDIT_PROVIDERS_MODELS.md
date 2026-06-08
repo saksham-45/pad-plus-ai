@@ -78,7 +78,7 @@
 ### 18. `_get_full_model_name()` может заменить модель на DEFAULT_MODELS
 **Файл:** `backend/runtime/litellm_service.py`, строка 283-301. Если model == provider или "auto" — подставляется дефолт.
 
-### 19. Pipeline обращается к ChromaDB при каждом запросе
+### 19. Pipeline обращается к векторной памяти при каждом запросе
 **Файл:** `backend/core/pipeline.py`, строки 524-543, 918-953. +200-500ms к каждому ответу.
 
 ### 20. `modelCache.js` TTL = 24 часа, бэкенд кэширует на 1 час

@@ -5,17 +5,29 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import CognitivePanel from './CognitivePanel';
 import { apiFetch } from '../services/api';
 
+const CHAT_STORAGE_KEY = 'chatMessages';
+
 export function ChatInterface({ selectedModel, user }) {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(CHAT_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [dialogId, setDialogId] = useState(() => sessionStorage.getItem('currentDialogId') || null);
   const messagesEndRef = useRef(null);
   const ws = useWebSocket();
   
   // === COGNITIVE UX LAYER ===
   const [showMetrics, setShowMetrics] = useState(true);
   const [lastResponseMeta, setLastResponseMeta] = useState(null);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages)); } catch {}
+  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -74,6 +86,7 @@ export function ChatInterface({ selectedModel, user }) {
           key_id: selectedModel?.keyId || null,
           model: selectedModel?.id || 'auto',
           provider: selectedModel?.provider || null,
+          dialog_id: dialogId,
           auto_mode: false,  // Всегда через полную систему
           explain: true,  // === COGNITIVE UX: Возвращать полные мета-данные ===
         }),
@@ -85,6 +98,12 @@ export function ChatInterface({ selectedModel, user }) {
       }
 
       const data = await response.json();
+      
+      // Сохраняем dialog_id для продолжения диалога
+      if (data.dialog_id) {
+        setDialogId(data.dialog_id);
+        sessionStorage.setItem('currentDialogId', data.dialog_id);
+      }
       
       setMessages(prev => {
         const updated = [...prev];
@@ -152,23 +171,49 @@ export function ChatInterface({ selectedModel, user }) {
             </div>
           ) : (
             messages.map((msg, idx) => (
-              <div
-                key={idx}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-                    msg.role === 'user'
-                      ? 'bg-primary text-white'
-                      : 'bg-gray-800 text-text-primary'
-                  }`}
+                  key={idx}
+                  className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
                 >
-                  <div className="text-base whitespace-pre-wrap">{msg.content}</div>
-                  {msg.streaming && (
-                    <span className="inline-block w-2 h-4 ml-1 bg-primary animate-pulse align-middle" />
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-4 py-2 ${
+                      msg.role === 'user'
+                        ? 'bg-primary text-white'
+                        : 'bg-gray-800 text-text-primary'
+                    }`}
+                  >
+                    <div className="text-base whitespace-pre-wrap">{msg.content}</div>
+                    {msg.streaming && (
+                      <span className="inline-block w-2 h-4 ml-1 bg-primary animate-pulse align-middle" />
+                    )}
+                  </div>
+                  {msg.role === 'assistant' && !msg.streaming && (
+                    <div className="flex gap-1 mt-1">
+                      <button
+                        onClick={async () => {
+                          await apiFetch('/api/v1/feedback', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ rating: 1 }),
+                          }).catch(() => {});
+                        }}
+                        className="text-xs text-gray-500 hover:text-green-400 transition-colors px-1"
+                        title="Нравится"
+                      >👍</button>
+                      <button
+                        onClick={async () => {
+                          await apiFetch('/api/v1/feedback', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ rating: -1 }),
+                          }).catch(() => {});
+                        }}
+                        className="text-xs text-gray-500 hover:text-red-400 transition-colors px-1"
+                        title="Не нравится"
+                      >👎</button>
+                    </div>
                   )}
                 </div>
-              </div>
             ))
           )}
           <div ref={messagesEndRef} />
@@ -204,6 +249,25 @@ export function ChatInterface({ selectedModel, user }) {
           </Button>
         </div>
         
+        {/* === FALLBACK ПРЕДУПРЕЖДЕНИЕ === */}
+        {lastResponseMeta?.meta?.fallback_used && (
+          <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+            <div className="flex items-center gap-2 text-yellow-500">
+              <span className="text-lg">⚠️</span>
+              <span className="text-sm font-medium">Использован fallback провайдера</span>
+            </div>
+            <div className="text-xs text-text-secondary mt-1 ml-4">
+              {lastResponseMeta.meta.fallback_from && lastResponseMeta.meta.fallback_to && (
+                <>
+                  <span className="line-through opacity-70">{lastResponseMeta.meta.fallback_from}</span>
+                  <span> → </span>
+                  <span className="font-medium text-green-500">{lastResponseMeta.meta.fallback_to}</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* === COGNITIVE UX LAYER: Панель метрик === */}
         {showMetrics && lastResponseMeta && (
           <CognitivePanel {...lastResponseMeta} />

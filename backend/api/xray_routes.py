@@ -8,10 +8,27 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from typing import Dict, List, Any, Optional
 import logging
 import asyncio
+from datetime import datetime
 
 logger = logging.getLogger("padplus.xray")
 
 router = APIRouter(prefix="/api/v1/xray", tags=["xray"])
+
+# In-memory store for latest pipeline result
+_latest_pipeline_result: Optional[Dict] = None
+
+
+def set_latest_pipeline_result(result: dict):
+    global _latest_pipeline_result
+    _latest_pipeline_result = result
+
+
+@router.get("/latest")
+async def get_latest_pipeline_result():
+    """Последний результат выполнения pipeline"""
+    if _latest_pipeline_result is None:
+        return {"status": "no_data", "message": "Нет данных. Отправьте запрос в чат."}
+    return _latest_pipeline_result
 
 
 @router.get("/")

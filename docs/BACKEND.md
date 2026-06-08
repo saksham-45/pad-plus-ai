@@ -18,7 +18,7 @@ backend/
 │   ├── anti_directive.py          # Философское ядро
 │   ├── async_http_client.py       # Асинхронный HTTP клиент
 │   ├── cache_manager.py           # Кэширование (Redis + in-memory)
-│   ├── chroma_memory.py           # ChromaDB память
+│   ├── cache_manager.py           # Кэширование (Redis + in-memory)
 │   ├── cognitive_metrics.py       # Когнитивные метрики
 │   ├── config_manager.py          # Управление конфигурацией
 │   ├── data_manager.py            # Управление данными
@@ -49,17 +49,13 @@ backend/
 │   ├── consolidation.py           # Консолидация памяти
 │   ├── episodic.py                # Эпизодическая память
 │   ├── fact_memory.py             # Факты (SQLite)
-│   ├── fact_memory_chroma.py      # Факты (ChromaDB)
 │   ├── hygiene.py                 # Гигиена памяти
 │   ├── persona.py                 # Личность
-│   ├── rag.py                     # RAG v3.0 (ChromaDB)
+│   ├── rag.py                     # RAG v3.0 (PostgreSQL/pgvector)
 │   ├── roots.py                   # Корневые знания
 │   ├── semantic.py                # Семантическая память
 │   ├── smartcache.py              # Временный кэш
-│   ├── smartcache_chroma.py       # Временный кэш (ChromaDB)
 │   ├── user_persona.py            # Персона пользователя
-│   ├── vector_memory_chroma.py    # Векторная память (ChromaDB)
-│   └── vectormemory.py            # Векторная память (SQLite, legacy)
 │
 ├── emotion/                       # Эмоции
 │   ├── pad_model.py               # PAD+ модель (6 измерений)
@@ -83,7 +79,7 @@ backend/
 │   ├── 002_rls_policies.sql
 │   └── 003_fix_rls_policies.sql
 │
-└── data/                          # Данные (SQLite, JSON, ChromaDB)
+└── data/                          # Данные (SQLite, JSON)
 ```
 
 ## Ключевые компоненты
@@ -160,8 +156,8 @@ allow_origins = [
 **Файл:** `core/dependencies.py`
 
 Регистрация 16 зависимостей:
-- RAG Memory (ChromaDB)
-- Fact Memory (ChromaDB)
+- RAG Memory (PostgreSQL/pgvector)
+- Fact Memory (SQLite)
 - Emotion Manager
 - Knowledge Graph
 - Persona
@@ -238,6 +234,6 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8080
 | litellm | Unified LLM interface |
 | gigachat | Официальный SDK GigaChat |
 | cryptography | Шифрование (Fernet) |
-| chromadb | Векторная база данных |
+
 | httpx / requests | HTTP клиенты |
 | pydantic | Валидация данных |

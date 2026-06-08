@@ -47,7 +47,7 @@
 **Решение:** Вынести в env variables
 
 ### 8. Нет health check для зависимостей
-**Проблема:** `/health` проверяет только ANTI_DIRECTIVE, но не Supabase, ChromaDB, LiteLLM
+**Проблема:** `/health` проверяет только ANTI_DIRECTIVE, но не Supabase, LiteLLM
 **Решение:** Добавить проверку всех зависимостей
 
 ---

@@ -1,5 +1,5 @@
 """
-API Routes — LiteLLM Only
+API Routes — LLM Service (OpenRouter & GigaChat)
 
 Минимальный набор endpoints для совместимости
 """
@@ -13,6 +13,6 @@ async def api_root():
     """Корневой эндпоинт"""
     return {
         "name": "PAD+ AI API",
-        "version": "4.0 (LiteLLM)",
+        "version": "4.0",
         "message": "Use /api/v1/* endpoints"
     }

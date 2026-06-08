@@ -3,16 +3,19 @@ API Routes для управления документами RAG
 
 Эндпоинты:
 - POST /api/v1/documents/upload - Загрузить документ
+- POST /api/v1/documents/from-url - Загрузить из интернета
 - GET /api/v1/documents - Список документов
 - GET /api/v1/documents/{id} - Детали документа
 - DELETE /api/v1/documents/{id} - Удалить документ
 - PATCH /api/v1/documents/{id} - Обновить документ
+- GET /api/v1/documents/search - RAG поиск
+- GET /api/v1/documents/settings - Настройки обработки
 - GET /api/v1/collections - Список коллекций
 - POST /api/v1/collections - Создать коллекцию
 - DELETE /api/v1/collections/{id} - Удалить коллекцию
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Header, UploadFile, File, Form, Query
+from fastapi import APIRouter, HTTPException, Depends, Header, UploadFile, File, Form, Query, Body
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -20,10 +23,12 @@ from datetime import datetime
 import logging
 import uuid
 import os
+import io
+import httpx
 
 logger = logging.getLogger("padplus")
 
-from core.supabase_client import get_supabase, get_supabase_service
+from core.supabase_client import get_supabase, get_db_client
 
 router = APIRouter(prefix="/api/v1", tags=["Document Management"])
 
@@ -151,9 +156,9 @@ async def upload_document(
         file_url = supabase.storage.from_("documents").get_public_url(file_path)
         
         # Сохраняем метаданные в БД (через service_role для обхода RLS)
-        db = get_supabase_service()
+        db = get_db_client(current_user)
         if not db:
-            raise HTTPException(status_code=500, detail="БД не подключена (service key)")
+            raise HTTPException(status_code=500, detail="БД не подключена")
         
         result = db.table("documents")\
             .insert({
@@ -201,7 +206,7 @@ async def list_documents(
     status: Optional[str] = None
 ):
     """Список документов пользователя"""
-    db = get_supabase_service()
+    db = get_db_client(current_user)
     if not db:
         raise HTTPException(status_code=500, detail="БД не подключена")
     
@@ -249,7 +254,7 @@ async def get_document_stats(
     current_user: dict = Depends(get_current_user)
 ):
     """Статистика документов"""
-    db = get_supabase_service()
+    db = get_db_client(current_user)
     if not db:
         raise HTTPException(status_code=500, detail="БД не подключена")
     
@@ -302,7 +307,7 @@ async def get_document(
     current_user: dict = Depends(get_current_user)
 ):
     """Получение деталей документа"""
-    db = get_supabase_service()
+    db = get_db_client(current_user)
     if not db:
         raise HTTPException(status_code=500, detail="БД не подключена")
     
@@ -337,7 +342,7 @@ async def delete_document(
     current_user: dict = Depends(get_current_user)
 ):
     """Удаление документа"""
-    db = get_supabase_service()
+    db = get_db_client(current_user)
     storage = get_supabase()
     if not db or not storage:
         raise HTTPException(status_code=500, detail="БД или Storage не подключены")
@@ -378,7 +383,7 @@ async def update_document(
     current_user: dict = Depends(get_current_user)
 ):
     """Обновление метаданных документа"""
-    db = get_supabase_service()
+    db = get_db_client(current_user)
     if not db:
         raise HTTPException(status_code=500, detail="БД не подключена")
     
@@ -414,7 +419,7 @@ async def list_collections(
     current_user: dict = Depends(get_current_user)
 ):
     """Список коллекций пользователя"""
-    db = get_supabase_service()
+    db = get_db_client(current_user)
     if not db:
         raise HTTPException(status_code=500, detail="БД не подключена")
     
@@ -451,7 +456,7 @@ async def create_collection(
     current_user: dict = Depends(get_current_user)
 ):
     """Создание коллекции"""
-    db = get_supabase_service()
+    db = get_db_client(current_user)
     if not db:
         raise HTTPException(status_code=500, detail="БД не подключена")
     
@@ -485,7 +490,7 @@ async def delete_collection(
     current_user: dict = Depends(get_current_user)
 ):
     """Удаление коллекции"""
-    db = get_supabase_service()
+    db = get_db_client(current_user)
     if not db:
         raise HTTPException(status_code=500, detail="БД не подключена")
     
@@ -509,5 +514,110 @@ async def delete_collection(
         .execute()
     
     return {"success": True, "message": "Коллекция удалена"}
+
+
+# ============================================================================
+# SEARCH ENDPOINT (RAG поиск по документам)
+# ============================================================================
+
+@router.get("/documents/search")
+async def search_documents(
+    q: str = Query(..., min_length=1),
+    current_user: dict = Depends(get_current_user),
+    limit: int = Query(default=10, ge=1, le=50)
+):
+    """RAG поиск по документам пользователя"""
+    try:
+        from memory.rag import get_rag
+        rag = get_rag()
+        user_id = current_user["id"]
+        results = rag.hybrid_search(q, n_results=limit, user_id=user_id)
+        return {"query": q, "results": results, "total": len(results)}
+    except ImportError:
+        raise HTTPException(status_code=500, detail="RAG не доступен")
+    except Exception as e:
+        logger.error(f"Search error: {e}")
+        return {"query": q, "results": [], "total": 0, "error": str(e)}
+
+
+# ============================================================================
+# SETTINGS ENDPOINT
+# ============================================================================
+
+CHUNK_SIZE = 800
+CHUNK_OVERLAP = 80
+
+
+@router.get("/documents/settings")
+async def get_document_settings(current_user: dict = Depends(get_current_user)):
+    """Настройки обработки документов"""
+    return {
+        "chunk_size": CHUNK_SIZE,
+        "chunk_overlap": CHUNK_OVERLAP,
+        "auto_summarize": True,
+        "auto_tag": True,
+        "summary_language": "ru",
+        "max_documents_per_collection": 1000,
+    }
+
+
+# ============================================================================
+# URL UPLOAD ENDPOINT
+# ============================================================================
+
+@router.post("/documents/from-url")
+async def upload_from_url(
+    data: Dict[str, Any] = Body(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Загрузка документа из URL"""
+    url = data.get("url", "")
+    if not url:
+        raise HTTPException(status_code=400, detail="URL обязателен")
+    if len(url) > 2048:
+        raise HTTPException(status_code=400, detail="URL слишком длинный")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(url, follow_redirects=True)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=400, detail=f"Не удалось скачать: {resp.status_code}")
+            content = resp.content
+            content_type = resp.headers.get("content-type", "application/octet-stream")
+            filename = url.split("/")[-1] or "document"
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=408, detail="Таймаут при скачивании")
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=400, detail=f"Ошибка сети: {str(e)}")
+
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Файл слишком большой (макс 50MB)")
+
+    supabase = get_supabase()
+    db = get_db_client(current_user)
+    user_id = current_user["id"]
+    collection_id = data.get("collection_id")
+    document_id = str(uuid.uuid4())
+    file_name = f"{document_id}_{filename}"
+    file_path = f"documents/{user_id}/{file_name}"
+
+    try:
+        supabase.storage.from_("documents").upload(
+            file_path, content, {"content-type": content_type}
+        )
+        file_url = supabase.storage.from_("documents").get_public_url(file_path)
+
+        db.table("documents").insert({
+            "id": document_id, "user_id": user_id, "title": filename,
+            "filename": file_name, "file_type": content_type,
+            "file_size": len(content), "file_url": file_url,
+            "file_path": file_path, "collection_id": collection_id,
+            "status": "pending",
+        }).execute()
+
+        return {"id": document_id, "title": filename, "status": "pending", "message": "Документ загружен из URL"}
+    except Exception as e:
+        logger.error(f"URL upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки: {str(e)}")
 
 

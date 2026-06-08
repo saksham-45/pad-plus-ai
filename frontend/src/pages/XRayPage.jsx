@@ -3,7 +3,9 @@ import { XRayPipeline } from '../components/xray/XRayPipeline';
 import { ThoughtStream } from '../components/xray/ThoughtStream';
 import { EmotionPanel } from '../components/xray/EmotionPanel';
 import { DecisionLog } from '../components/xray/DecisionLog';
+import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { apiFetch } from '../services/api';
 
 export function XRayPage() {
   // Состояние пайплайна
@@ -22,8 +24,19 @@ export function XRayPage() {
   // Состояние решений
   const [decisions, setDecisions] = useState([]);
 
+  // REST данные
+  const [latestResult, setLatestResult] = useState(null);
+  const [xrayStats, setXrayStats] = useState(null);
+  const [activeSessions, setActiveSessions] = useState([]);
+
   // Состояние сессии
   const [sessionId, setSessionId] = useState(null);
+
+  useEffect(() => {
+    apiFetch('/api/v1/xray/latest').then(r => r.ok && r.json().then(setLatestResult)).catch(() => {});
+    apiFetch('/api/v1/xray/stats').then(r => r.ok && r.json().then(setXrayStats)).catch(() => {});
+    apiFetch('/api/v1/xray/active').then(r => r.ok && r.json().then(d => setActiveSessions(d.active_sessions || []))).catch(() => {});
+  }, []);
 
   // Используем общий хук WebSocket
   const { connected, messages, send } = useWebSocket();
@@ -41,6 +54,7 @@ export function XRayPage() {
         // Heartbeat response
         break;
 
+      // === X-Ray Broadcaster события (через /api/v1/xray/ws) ===
       case 'trace_event':
         handleTraceEvent(data);
         break;
@@ -63,6 +77,29 @@ export function XRayPage() {
 
       case 'welcome':
         console.log('🔬 Добро пожаловать в X-Ray:', data);
+        break;
+
+      // === TraceCollector события (через мост /ws → TraceCollector) ===
+      case 'event_recorded':
+        // TraceEvent.to_dict(): {stage, status, duration_ms, data, error}
+        handleTraceEvent({
+          stage: data.stage,
+          status: data.status,
+          duration_ms: data.duration_ms,
+          timestamp: data.timestamp,
+          data: data.data || {},
+          error: data.error
+        });
+        break;
+
+      case 'session_started':
+        setSessionId(data.request_id);
+        setPipelineStatus('processing');
+        setActiveStage('safety');
+        break;
+
+      case 'session_completed':
+        setPipelineStatus('success');
         break;
 
       default:
@@ -222,6 +259,69 @@ export function XRayPage() {
               status={pipelineStatus}
               error={pipelineError}
             />
+
+            {/* Latest Pipeline Result */}
+            {latestResult?.pipeline && (
+              <Card className="w-full bg-gray-900/50 border-gray-700">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg text-white flex items-center gap-2">
+                    <span>📊</span> Последний запрос
+                    <span className="text-xs text-gray-400 font-normal ml-auto">
+                      {latestResult.timestamp ? new Date(latestResult.timestamp).toLocaleTimeString('ru-RU') : ''}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div className="p-3 bg-gray-800/50 rounded-lg">
+                      <div className="text-xs text-gray-400 mb-1">Стратегия</div>
+                      <div className="text-sm font-medium">{latestResult.pipeline.strategy}</div>
+                    </div>
+                    <div className="p-3 bg-gray-800/50 rounded-lg">
+                      <div className="text-xs text-gray-400 mb-1">Интент</div>
+                      <div className="text-sm font-medium">{latestResult.pipeline.intent}</div>
+                    </div>
+                    <div className="p-3 bg-gray-800/50 rounded-lg">
+                      <div className="text-xs text-gray-400 mb-1">Уверенность</div>
+                      <div className="text-sm font-medium">
+                        {(latestResult.pipeline.confidence * 100).toFixed(0)}%
+                      </div>
+                    </div>
+                    <div className="p-3 bg-gray-800/50 rounded-lg">
+                      <div className="text-xs text-gray-400 mb-1">Truth</div>
+                      <div className="text-sm font-medium">
+                        {(latestResult.pipeline.truth_confidence * 100).toFixed(0)}%
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    <span className="text-gray-500">Провайдер:</span> {latestResult.provider} · 
+                    <span className="text-gray-500 ml-2">Модель:</span> {latestResult.model} ·
+                    <span className="text-gray-500 ml-2">Сообщение:</span> {latestResult.user_message}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Active Sessions */}
+            {activeSessions.length > 0 && (
+              <Card className="w-full bg-gray-900/50 border-gray-700">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg text-white flex items-center gap-2">
+                    <span>🔌</span> Активные сессии ({activeSessions.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {activeSessions.map((s, i) => (
+                      <div key={i} className="p-2 bg-gray-800/50 rounded-lg text-xs text-gray-400">
+                        {s.id || s.request_id || `Сессия ${i+1}`}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Session Info */}
             {sessionId && (

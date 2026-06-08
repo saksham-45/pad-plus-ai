@@ -49,7 +49,7 @@ class TestPipelineWithAPIKey:
         sig = inspect.signature(pipeline.execute)
         
         params = list(sig.parameters.keys())
-        expected_params = ['user_message', 'context', 'session_id', 'api_key', 'provider', 'model']
+        expected_params = ['user_message', 'context', 'session_id', 'api_key', 'provider']
         
         for param in expected_params:
             assert param in params, f"Expected parameter '{param}' not found in {params}"
@@ -73,51 +73,47 @@ class TestPipelineWithAPIKey:
 
 
 # ============================================================================
-# ТЕСТЫ 2: LITELLM SERVICE С КЛЮЧОМ ПОЛЬЗОВАТЕЛЯ
+# ТЕСТЫ 2: LLM SERVICE С КЛЮЧОМ ПОЛЬЗОВАТЕЛЯ
 # ============================================================================
 
-class TestLiteLLMWithUserKey:
-    """Тесты LiteLLMService с ключом пользователя"""
+class TestLLMWithUserKey:
+    """Тесты LLMService с ключом пользователя"""
 
-    def test_litellm_service_with_api_key(self):
-        """Проверяет, что LiteLLMService принимает api_key"""
-        from backend.runtime.litellm_service import LiteLLMService
+    def test_LLM_service_with_api_key(self):
+        """Проверяет, что LLMService принимает api_key"""
+        from backend.runtime.litellm_service import LLMService
         
-        service = LiteLLMService(api_key="test-key-123")
+        service = LLMService(api_key="test-key-123")
         assert service.default_api_key == "test-key-123"
 
-    def test_litellm_service_with_provider(self):
-        """Проверяет, что LiteLLMService принимает provider"""
-        from backend.runtime.litellm_service import LiteLLMService
+    def test_LLM_service_with_provider(self):
+        """Проверяет, что LLMService принимает provider"""
+        from backend.runtime.litellm_service import LLMService
         
-        service = LiteLLMService(api_key="test-key", model="gemini-2.0-flash")
+        service = LLMService(api_key="test-key", model="gemini-2.0-flash")
         assert service.default_model == "gemini-2.0-flash"
 
     @pytest.mark.asyncio
-    async def test_litellm_generate_with_user_key(self):
+    async def test_LLM_generate_with_user_key(self):
         """
         Проверяет, что generate() использует ключ пользователя
         (с моком, чтобы не делать реальный запрос)
         """
-        from backend.runtime.litellm_service import LiteLLMService, LLMResponse
+        from backend.runtime.litellm_service import LLMService, LLMResponse
         
-        service = LiteLLMService(api_key="user-key-123")
+        service = LLMService(api_key="user-key-123")
         
-        # Мок для acompletion
-        with patch('backend.runtime.litellm_service.acompletion') as mock_completion:
-            mock_completion.return_value = AsyncMock(
-                choices=[
-                    AsyncMock(
-                        message=AsyncMock(content="Ответ"),
-                        finish_reason="stop"
-                    )
-                ],
-                usage=AsyncMock(
-                    prompt_tokens=10,
-                    completion_tokens=20,
-                    total_tokens=30
-                )
-            )
+        # Мок для _session.post, чтобы не делать реальный запрос
+        with patch.object(service._session, 'post') as mock_post:
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+            mock_response.json = AsyncMock(return_value={
+                "choices": [{"message": {"content": "Ответ"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+                "model": "gemini-2.0-flash"
+            })
+            mock_response.text = ""
+            mock_post.return_value = mock_response
             
             # Вызываем generate с ключом пользователя
             result = await service.generate(
@@ -127,10 +123,10 @@ class TestLiteLLMWithUserKey:
                 model="gemini-2.0-flash"
             )
             
-            # Проверяем, что acompletion был вызван с ключом пользователя
-            mock_completion.assert_called_once()
-            call_kwargs = mock_completion.call_args[1]
-            assert call_kwargs['api_key'] == "user-key-123"
+            # Проверяем, что post был вызван с правильными заголовками
+            assert mock_post.called
+            call_kwargs = mock_post.call_args[1]
+            assert call_kwargs['headers']['Authorization'] == "Bearer user-key-123"
 
 
 # ============================================================================
@@ -235,15 +231,16 @@ class TestKeyIsolation:
         
         pipeline = PipelineExecutor()
         
-        # Мок для LiteLLMService
-        with patch('backend.core.pipeline.LiteLLMService') as MockLiteLLM:
+        # Мок для LLMService
+        with patch('backend.core.pipeline.LLMService') as MockLLM:
             mock_service = AsyncMock()
             mock_service.generate = AsyncMock(return_value=AsyncMock(
                 text="Ответ",
+                model="test",
                 provider="google",
                 confidence=0.85
             ))
-            MockLiteLLM.return_value = mock_service
+            MockLLM.return_value = mock_service
             
             # Пользователь 1
             await pipeline.execute(
@@ -259,8 +256,8 @@ class TestKeyIsolation:
                 provider="groq"
             )
             
-            # Проверяем, что LiteLLMService был создан с разными ключами
-            calls = MockLiteLLM.call_args_list
+            # Проверяем, что LLMService был создан с разными ключами
+            calls = MockLLM.call_args_list
             assert len(calls) == 2
             
             # Первый вызов с ключом пользователя 1
@@ -291,9 +288,9 @@ class TestFastVsSlowMode:
     """Тесты быстрого и медленного режимов"""
 
     @pytest.mark.asyncio
-    async def test_fast_mode_uses_litellm_directly(self):
+    async def test_fast_mode_uses_LLM_directly(self):
         """
-        Проверяет, что быстрый режим использует LiteLLM напрямую
+        Проверяет, что быстрый режим использует LLM напрямую
         """
         from backend.api.frontend_routes import is_fast_request
         
@@ -336,9 +333,9 @@ class TestPhase1Integration:
         assert 'api_key' in params
         assert 'provider' in params
         
-        # 2. LiteLLMService принимает ключ
-        from backend.runtime.litellm_service import LiteLLMService
-        service = LiteLLMService(api_key="test")
+        # 2. LLMService принимает ключ
+        from backend.runtime.litellm_service import LLMService
+        service = LLMService(api_key="test")
         assert service.default_api_key == "test"
         
         # 3. ChatResponse имеет все поля

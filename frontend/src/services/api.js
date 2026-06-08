@@ -122,4 +122,4 @@ export const apiFetch = async (url, options = {}) => {
   return response;
 };
 
-export { getAuthToken, setTokens };
+export { getAuthToken, getRefreshToken, setTokens };

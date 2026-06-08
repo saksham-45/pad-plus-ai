@@ -6,7 +6,7 @@
 
 ## Типы памяти
 
-### 1. RAG Memory (ChromaDB)
+### 1. RAG Memory (PostgreSQL/pgvector)
 
 **Файл:** `backend/memory/rag.py`
 
@@ -26,7 +26,7 @@
 - `search_by_topic()` — поиск по теме
 - `get_recent()` — недавние диалоги
 
-### 2. Fact Memory (SQLite + ChromaDB)
+### 2. Fact Memory (SQLite)
 
 **Файлы:** `backend/memory/fact_memory.py`, `fact_memory_chroma.py`
 

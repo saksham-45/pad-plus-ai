@@ -24,7 +24,7 @@ import uuid
 
 logger = logging.getLogger("padplus")
 
-from core.supabase_client import get_supabase
+from core.supabase_client import get_db_client, get_supabase
 
 router = APIRouter(prefix="/api/v1/dialogs", tags=["Dialog History"])
 
@@ -96,7 +96,8 @@ async def get_current_user(
             "auth_user": user,
             "profile": profile,
             "id": user.id,
-            "email": user.email
+            "email": user.email,
+            "access_token": token,
         }
         
     except HTTPException:
@@ -128,7 +129,7 @@ async def list_dialogs(
         sort_order: Порядок сортировки (asc, desc)
         is_favorite: Фильтр по избранному (True/False/None)
     """
-    supabase = get_supabase()
+    supabase = get_db_client(current_user)
     user_id = current_user["id"]
     
     # Ограничиваем limit
@@ -142,25 +143,36 @@ async def list_dialogs(
     # Валидируем sort_order
     descending = sort_order.lower() != "asc"
     
-    # Строим запрос
+    # Получаем пагинированные диалоги (без count — отдельным запросом)
     query = supabase.table("dialogs")\
-        .select("*", count="exact")\
+        .select("*")\
         .eq("user_id", user_id)
     
-    # Применяем фильтр по избранному
     if is_favorite is not None:
         query = query.eq("is_favorite", is_favorite)
     
-    # Сортировка
     query = query.order(f"{sort_by}", desc=descending)
-    
-    # Пагинация
     query = query.range(offset, offset + limit - 1)
-    
-    # Выполняем запрос
     result = query.execute()
     
-    total = result.count if result.count else 0
+    # Общее количество — только если первая страница
+    total = 0
+    if offset == 0:
+        try:
+            count_result = supabase.table("dialogs")\
+                .select("id", count="exact")\
+                .eq("user_id", user_id)\
+                .limit(0)\
+                .execute()
+            total = count_result.count if count_result.count else 0
+        except Exception:
+            pass
+    
+    has_more = False
+    if total > 0:
+        has_more = offset + limit < total
+    elif len(result.data) >= limit:
+        has_more = True
     
     dialogs = []
     for dialog in result.data:
@@ -179,7 +191,7 @@ async def list_dialogs(
         "total": total,
         "offset": offset,
         "limit": limit,
-        "has_more": offset + limit < total
+        "has_more": has_more
     }
 
 
@@ -188,58 +200,67 @@ async def get_dialog_stats(
     current_user: dict = Depends(get_current_user)
 ):
     """Статистика диалогов пользователя"""
-    supabase = get_supabase()
+    supabase = get_db_client(current_user)
     user_id = current_user["id"]
     
-    # Общая статистика
-    total_result = supabase.table("dialogs")\
-        .select("id", count="exact")\
-        .eq("user_id", user_id)\
-        .execute()
-    
-    total_dialogs = total_result.count if total_result.count else 0
-    
-    # Избранные
-    favorite_result = supabase.table("dialogs")\
-        .select("id", count="exact")\
-        .eq("user_id", user_id)\
-        .eq("is_favorite", True)\
-        .execute()
-    
-    favorite_dialogs = favorite_result.count if favorite_result.count else 0
-    
-    # Общее количество сообщений
-    dialogs_result = supabase.table("dialogs")\
-        .select("id")\
-        .eq("user_id", user_id)\
-        .execute()
-    
-    dialog_ids = [d["id"] for d in dialogs_result.data]
-    
+    total_dialogs = 0
+    favorite_dialogs = 0
     total_messages = 0
-    if dialog_ids:
-        messages_result = supabase.table("messages")\
-            .select("id", count="exact")\
-            .in_("dialog_id", dialog_ids)\
-            .execute()
-        total_messages = messages_result.count if messages_result.count else 0
-    
-    # Активность по дням (последние 7 дней)
-    from datetime import timedelta
-    seven_days_ago = datetime.now() - timedelta(days=7)
-    
-    activity_result = supabase.table("dialogs")\
-        .select("created_at")\
-        .eq("user_id", user_id)\
-        .gte("created_at", seven_days_ago.isoformat())\
-        .execute()
-    
-    # Группируем по дням
     activity_by_day = {}
-    for dialog in activity_result.data:
-        day = dialog["created_at"][:10]  # YYYY-MM-DD
-        activity_by_day[day] = activity_by_day.get(day, 0) + 1
-    
+
+    try:
+        # Считаем диалоги (только count, без данных)
+        total_result = supabase.table("dialogs")\
+            .select("id", count="exact")\
+            .eq("user_id", user_id)\
+            .limit(0)\
+            .execute()
+        total_dialogs = total_result.count if total_result.count else 0
+    except Exception:
+        pass
+
+    try:
+        # Избранные — тоже только count
+        favorite_result = supabase.table("dialogs")\
+            .select("id", count="exact")\
+            .eq("user_id", user_id)\
+            .eq("is_favorite", True)\
+            .limit(0)\
+            .execute()
+        favorite_dialogs = favorite_result.count if favorite_result.count else 0
+    except Exception:
+        pass
+
+    try:
+        # Сумма message_count из dialogs (нет тяжелого IN запроса)
+        dialogs_result = supabase.table("dialogs")\
+            .select("message_count")\
+            .eq("user_id", user_id)\
+            .execute()
+        total_messages = sum(
+            d.get("message_count", 0) or 0
+            for d in (dialogs_result.data or [])
+        )
+    except Exception:
+        pass
+
+    try:
+        # Активность — последние 7 дней (ограничиваем выборку)
+        from datetime import timedelta
+        seven_days_ago = datetime.now() - timedelta(days=7)
+        activity_result = supabase.table("dialogs")\
+            .select("created_at")\
+            .eq("user_id", user_id)\
+            .gte("created_at", seven_days_ago.isoformat())\
+            .order("created_at", desc=False)\
+            .limit(100)\
+            .execute()
+        for dialog in activity_result.data or []:
+            day = dialog["created_at"][:10]
+            activity_by_day[day] = activity_by_day.get(day, 0) + 1
+    except Exception:
+        pass
+
     return {
         "total_dialogs": total_dialogs,
         "favorite_dialogs": favorite_dialogs,
@@ -254,7 +275,9 @@ async def get_dialog(
     current_user: dict = Depends(get_current_user)
 ):
     """Получение деталей диалога с сообщениями"""
-    supabase = get_supabase()
+    supabase = get_db_client(current_user)
+    if not supabase:
+        raise HTTPException(status_code=500, detail="БД не подключена")
     user_id = current_user["id"]
     
     # Получаем диалог
@@ -273,7 +296,7 @@ async def get_dialog(
     messages_result = supabase.table("messages")\
         .select("*")\
         .eq("dialog_id", dialog_id)\
-        .order("created_at", asc=True)\
+        .order("created_at", desc=False)\
         .execute()
     
     messages = []
@@ -315,7 +338,7 @@ async def delete_dialog(
     current_user: dict = Depends(get_current_user)
 ):
     """Удаление диалога"""
-    supabase = get_supabase()
+    supabase = get_db_client(current_user)
     user_id = current_user["id"]
     
     # Проверяем, что диалог принадлежит пользователю
@@ -336,7 +359,7 @@ async def delete_all_dialogs(
     current_user: dict = Depends(get_current_user)
 ):
     """Очистка всей истории диалогов"""
-    supabase = get_supabase()
+    supabase = get_db_client(current_user)
     user_id = current_user["id"]
     
     result = supabase.table("dialogs")\
@@ -353,7 +376,7 @@ async def toggle_favorite(
     current_user: dict = Depends(get_current_user)
 ):
     """Добавить/удалить диалог из избранного"""
-    supabase = get_supabase()
+    supabase = get_db_client(current_user)
     user_id = current_user["id"]
     
     # Получаем текущее состояние
@@ -391,7 +414,7 @@ async def export_dialog(
     current_user: dict = Depends(get_current_user)
 ):
     """Экспорт диалога в JSON или TXT формате"""
-    supabase = get_supabase()
+    supabase = get_db_client(current_user)
     user_id = current_user["id"]
     
     # Получаем диалог
@@ -410,7 +433,7 @@ async def export_dialog(
     messages_result = supabase.table("messages")\
         .select("*")\
         .eq("dialog_id", dialog_id)\
-        .order("created_at", asc=True)\
+        .order("created_at", desc=False)\
         .execute()
     
     messages = []
@@ -472,14 +495,15 @@ async def search_dialogs(
     
     Использует полнотекстовой поиск PostgreSQL
     """
-    supabase = get_supabase()
+    supabase = get_db_client(current_user)
     user_id = current_user["id"]
     
-    # Сначала ищем сообщения, содержащие запрос
+    # Сначала ищем сообщения, содержащие запрос (с лимитом)
     messages_result = supabase.table("messages")\
         .select("id, dialog_id, role, content, created_at")\
         .eq("role", "user")\
         .filter("content", "ilike", f"%{query}%")\
+        .limit(200)\
         .execute()
     
     # Получаем уникальные dialog_id

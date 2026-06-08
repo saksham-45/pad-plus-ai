@@ -6,6 +6,8 @@ import InstructionsPage from './pages/InstructionsPage';
 import ProvidersPage from './pages/ProvidersPage';
 import ConnectedProvidersPage from './pages/ConnectedProvidersPage';
 import XRayPage from './pages/XRayPage';
+import MemoryPage from './pages/MemoryPage';
+import KnowledgePage from './pages/KnowledgePage';
 import SettingsPage from './pages/SettingsPage';
 import HistoryPage from './pages/HistoryPage';
 import DocumentsPage from './pages/DocumentsPage';
@@ -22,6 +24,8 @@ const tabs = [
   { id: 'documents', label: '📄 Документы', icon: '📄' },
   { id: 'history', label: '📜 История', icon: '📜' },
   { id: 'xray', label: '🔬 X-Ray', icon: '🔬' },
+  { id: 'memory', label: '🧠 Память', icon: '🧠' },
+  { id: 'knowledge', label: '🔗 Знания', icon: '🔗' },
   { id: 'settings', label: '⚙️ Настройки', icon: '⚙️' },
   { id: 'instructions', label: '📖 Инструкции', icon: '📖' },
   { id: 'providers', label: '⚡ Провайдеры', icon: '⚡' },
@@ -188,25 +192,6 @@ function App() {
     }
   }, [user]);
 
-  // Авто-выбор модели при загрузке ключей (если ещё не выбрана)
-  useEffect(() => {
-    if (keys.length > 0 && !selectedModel) {
-      const defaultKey = keys.find(k => k.is_default);
-      if (defaultKey) {
-        setSelectedModel({
-          id: defaultKey.model_preference || 'auto',
-          name: defaultKey.model_preference === 'auto'
-            ? `${defaultKey.provider_display_name} (Auto)`
-            : defaultKey.model_preference,
-          keyId: defaultKey.id,
-          provider: defaultKey.provider,
-          providerName: defaultKey.provider_display_name,
-          isDefault: defaultKey.is_default,
-        });
-      }
-    }
-  }, [keys]);
-
   // Слушатель событий обновления ключей от других компонентов
   useEffect(() => {
     const handleKeysUpdated = () => {
@@ -229,6 +214,28 @@ function App() {
       window.removeEventListener('model-changed', handleModelChanged);
     };
   }, []);
+
+  // При обновлении ключей перепроверяем selectedModel, если default изменился
+  useEffect(() => {
+    if (keys.length > 0) {
+      const defaultKey = keys.find(k => k.is_default);
+      if (defaultKey) {
+        const expectedId = defaultKey.model_preference === 'auto'
+          ? `${defaultKey.provider_display_name} (Auto)`
+          : defaultKey.model_preference;
+        if (!selectedModel || selectedModel.id !== expectedId || selectedModel.keyId !== defaultKey.id) {
+          setSelectedModel({
+            id: defaultKey.model_preference || 'auto',
+            name: expectedId,
+            keyId: defaultKey.id,
+            provider: defaultKey.provider,
+            providerName: defaultKey.provider_display_name,
+            isDefault: true,
+          });
+        }
+      }
+    }
+  }, [keys]);
 
 
   const handleLogout = () => {
@@ -370,46 +377,26 @@ function App() {
         }}
       >
         <div className="px-4">
-          {activeTab === 'home' && (
-            <Dashboard />
-          )}
-
+          {activeTab === 'home' && <Dashboard />}
           {activeTab === 'chat' && (
             <div className="h-[calc(100vh-120px)]">
-              <ChatInterface
-                selectedModel={selectedModel}
-                user={user}
-              />
+              <ChatInterface selectedModel={selectedModel} user={user} />
             </div>
           )}
+          {activeTab === 'instructions' && <InstructionsPage />}
+          {activeTab === 'providers' && <ProvidersPage />}
+          {activeTab === 'connected-providers' && <ConnectedProvidersPage />}
+          {activeTab === 'xray' && <XRayPage />}
+          {activeTab === 'settings' && <SettingsPage />}
 
-          {activeTab === 'instructions' && (
-            <InstructionsPage />
-          )}
-
-          {activeTab === 'providers' && (
-            <ProvidersPage />
-          )}
-
-          {activeTab === 'connected-providers' && (
-            <ConnectedProvidersPage />
-          )}
-
-          {activeTab === 'xray' && (
-            <XRayPage />
-          )}
-
-          {activeTab === 'settings' && (
-            <SettingsPage />
-          )}
-
-          {activeTab === 'history' && (
+          {/* History — единственная страница с hidden (сохраняет состояние скролла) */}
+          <div className={activeTab === 'history' ? '' : 'hidden'}>
             <HistoryPage />
-          )}
+          </div>
 
-          {activeTab === 'documents' && (
-            <DocumentsPage />
-          )}
+          {activeTab === 'documents' && <DocumentsPage />}
+          {activeTab === 'memory' && <MemoryPage />}
+          {activeTab === 'knowledge' && <KnowledgePage />}
         </div>
       </main>
       </div>

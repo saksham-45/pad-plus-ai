@@ -177,8 +177,8 @@ def main():
     print("\n" + "=" * 60)
     print("Готово!")
     print("=" * 60)
-    print("\n⚠️  ВАЖНО: Верните verify=True в litellm_service.py:")
-    print("  c:\\пад ал датабаз а  чистый\\PAD+ AI чистый\\backend\\runtime\\litellm_service.py")
+    print("\n⚠️  ВАЖНО: Верните verify=True в llm_service.py:")
+    print("  c:\\пад ал датабаз а  чистый\\PAD+ AI чистый\\backend\\runtime\\llm_service.py")
     print("  (строки 557, 582, 658, 687)")
     print("\n🔄 Перезапустите backend после изменений")
 

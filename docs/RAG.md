@@ -2,7 +2,7 @@
 
 ## Обзор
 
-RAG (Retrieval-Augmented Generation) — семантическая память диалогов на основе ChromaDB.
+RAG (Retrieval-Augmented Generation) — семантическая память диалогов на основе PostgreSQL/pgvector.
 
 **Файл:** `backend/memory/rag.py`
 

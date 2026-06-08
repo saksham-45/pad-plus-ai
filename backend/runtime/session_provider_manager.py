@@ -1,16 +1,13 @@
 """
-Session Provider Manager — Управление ключами пользователей через LiteLLM
+Session Provider Manager — Управление ключами пользователей через LLM провайдеров
 
 Пользователь вводит ключи → ключи шифруются → сохраняются в БД → используются для чата
 """
 
 from typing import Optional, Dict
-from runtime.litellm_service import LiteLLMService
 from core.supabase_client import get_supabase
 from core.encryption import get_encryptor
 import logging
-import time
-import os
 
 logger = logging.getLogger("padplus.session_provider")
 
@@ -19,7 +16,8 @@ class SessionProviderManager:
     """
     Менеджер провайдеров для сессии пользователя
     
-    Использует ТОЛЬКО LiteLLM для всех провайдеров
+    Создаёт UserManager для каждого пользователя, который управляет его API ключами.
+    Ключи передаются в LLMService.generate() напрямую, а не хранятся в сервисе.
     """
     
     def __init__(self):
@@ -34,7 +32,7 @@ class SessionProviderManager:
             session_id: ID сессии (user_id из Supabase Auth)
         
         Returns:
-            UserManager с настроенным LiteLLM сервисом
+            UserManager с загруженными ключами из БД
         """
         user_manager = UserManager(session_id, self.supabase, self.encryptor)
         user_manager.load_keys()
@@ -45,19 +43,19 @@ class UserManager:
     """
     Персональный менеджер пользователя
     
-    Хранит активные API ключи и создаёт LiteLLM сервисы
+    Хранит активные API ключи (ключи передаются в generate() напрямую)
+    
+    Методы:
+    - load_keys(): Загрузить ключи из БД
+    - get_default_key_data(): Получить расшифрованный ключ по умолчанию
+    - get_provider_keys(provider): Получить расшифрованный ключ провайдера
     """
     
     def __init__(self, user_id: str, supabase, encryptor):
         self.user_id = user_id
         self.supabase = supabase
         self.encryptor = encryptor
-        self.litellm_service: Optional[LiteLLMService] = None
         self.keys: Dict[str, Dict] = {}
-        self.is_demo_mode = False
-        self.demo_requests_used = 0
-        self.demo_max_requests = 50
-        self.demo_session_start = None
     
     def load_keys(self):
         """Загружает ключи пользователя из БД"""
@@ -76,70 +74,60 @@ class UserManager:
             logger.info(f"У пользователя {self.user_id} нет ключей")
             return
         
-        # Находим ключ по умолчанию
-        default_key = None
+        # Сохраняем все ключи
         for key_data in result.data:
             self.keys[key_data["provider"]] = key_data
-            if key_data.get("is_default"):
-                default_key = key_data
         
-        # Создаём LiteLLM сервис с ключом по умолчанию
-        if default_key:
-            api_key = self.encryptor.decrypt(default_key["api_key_encrypted"])
-            model = default_key.get("model_preference")
-            
-            if api_key and model:
-                self.litellm_service = LiteLLMService(
-                    api_key=api_key,
-                    model=model
-                )
-                logger.info(f"✅ LiteLLM настроен для {default_key['provider']}: {model}")
-            else:
-                logger.warning(f"⚠️ Ключ {default_key['provider']} не имеет API ключа или модели")
+        logger.info(f"✅ Загружено {len(self.keys)} ключей для пользователя {self.user_id}")
     
     def has_active_providers(self) -> bool:
         """Проверяет есть ли активные ключи"""
-        return self.litellm_service is not None
+        return len(self.keys) > 0
+    
+    def get_default_key(self) -> Optional[Dict]:
+        """Получает ключ по умолчанию"""
+        for key_data in self.keys.values():
+            if key_data.get("is_default"):
+                return key_data
+        # Если нет default, возвращаем первый
+        return next(iter(self.keys.values()), None)
     
     def get_provider_keys(self, provider: str) -> Optional[Dict]:
-        """Получает ключ конкретного провайдера"""
-        return self.keys.get(provider)
+        """Получает ключ конкретного провайдера (с расшифровкой)"""
+        key_data = self.keys.get(provider)
+        if not key_data:
+            return None
+        
+        # Расшифровываем ключ
+        try:
+            api_key = self.encryptor.decrypt(key_data["api_key_encrypted"])
+            return {
+                "provider": key_data["provider"],
+                "api_key": api_key,
+                "model_preference": key_data.get("model_preference"),
+                "is_default": key_data.get("is_default", False)
+            }
+        except Exception as e:
+            logger.error(f"Ошибка расшифровки ключа: {e}")
+            return None
     
-    def enable_demo_mode(self):
-        """Включает демо режим с системным ключом"""
-        demo_api_key = os.getenv("DEMO_API_KEY")
-        demo_model = os.getenv("DEMO_MODEL", "gpt-3.5-turbo")
+    def get_default_key_data(self) -> Optional[Dict]:
+        """Получает данные ключа по умолчанию (с расшифровкой)"""
+        default_key = self.get_default_key()
+        if not default_key:
+            return None
         
-        if demo_api_key:
-            self.litellm_service = LiteLLMService(
-                api_key=demo_api_key,
-                model=demo_model
-            )
-            self.is_demo_mode = True
-            self.demo_session_start = time.time()
-            logger.info(f"✅ Демо режим активирован для сессии {self.user_id}")
-    
-    def can_make_request(self) -> bool:
-        """Проверяет может ли пользователь сделать еще запрос в демо режиме"""
-        if not self.is_demo_mode:
-            return True
-        
-        # Проверяем лимит запросов
-        if self.demo_requests_used >= self.demo_max_requests:
-            return False
-        
-        # Проверяем лимит по времени (15 минут)
-        if self.demo_session_start:
-            elapsed = time.time() - self.demo_session_start
-            if elapsed > 15 * 60:  # 15 минут
-                return False
-        
-        return True
-    
-    def count_request(self):
-        """Увеличивает счетчик запросов в демо режиме"""
-        if self.is_demo_mode:
-            self.demo_requests_used += 1
+        try:
+            api_key = self.encryptor.decrypt(default_key["api_key_encrypted"])
+            return {
+                "provider": default_key["provider"],
+                "api_key": api_key,
+                "model_preference": default_key.get("model_preference"),
+                "is_default": default_key.get("is_default", False)
+            }
+        except Exception as e:
+            logger.error(f"Ошибка расшифровки default ключа: {e}")
+            return None
 
 
 # ============================================================================

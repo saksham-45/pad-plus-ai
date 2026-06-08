@@ -1,39 +1,26 @@
 """
 📦 Memory Package — Единый интерфейс для всех систем памяти
 
-Этот модуль предоставляет единый доступ ко всем компонентам памяти:
 - RAG (векторный поиск контекста)
-- Fact Memory (факты через ChromaDB)
-- Vector Memory (долговременная память через ChromaDB)
-- SmartCache (кратковременный кэш через ChromaDB)
 - Episodic Memory (эпизодическая память)
 - Semantic Memory (семантическая/процедурная память)
 - Persona (личность)
 - User Persona (персонализированная личность)
 - Roots Memory (фундаментальные принципы)
-
-Все компоненты используют ChromaDB для векторного поиска.
 """
 
 # Базовый интерфейс
 from .base import MemoryInterface, MemoryRecord
 
-# === Новые версии (ChromaDB) — основные ===
-# Удалено в пользу PostgreSQL-версии
-
-# === Другие компоненты памяти ===
 # Условный импорт RAG в зависимости от конфигурации
 try:
     from core.config_manager import get_database_url
     db_url = get_database_url()
-    if db_url.startswith('postgresql'):
-        # Используем PostgreSQL версию RAG
+    if db_url and db_url.startswith('postgresql'):
         from .rag_postgres import RAGMemory, get_rag
     else:
-        # Используем ChromaDB/SQLite версию RAG
         from .rag import RAGMemory, get_rag
-except ImportError as e:
-    # Если config_manager недоступен, используем ChromaDB по умолчанию
+except ImportError:
     from .rag import RAGMemory, get_rag
 
 from .episodic import EpisodicMemory, get_episodic_memory
@@ -56,9 +43,6 @@ __all__ = [
     # Базовый интерфейс
     "MemoryInterface",
     "MemoryRecord",
-    
-    # Новые версии (ChromaDB) - удалено
-
     
     # Другие компоненты
     "RAGMemory",

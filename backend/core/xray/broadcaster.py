@@ -119,8 +119,8 @@ class XRayBroadcaster:
                 
                 # Отправляем актуальное состояние системы
                 try:
-                    from backend.core.xray.cognitive_state import get_cognitive_state
-                    cognitive_state = get_cognitive_state()
+                    from core.xray.cognitive_state import get_cognitive_state_manager
+                    cognitive_state = get_cognitive_state_manager()
                     await self.send_emotion_update(cognitive_state.get_pad_state())
                 except Exception as e:
                     logger.debug(f"📡 Не удалось отправить состояние PAD: {e}")

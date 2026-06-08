@@ -3,23 +3,10 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from './ui/Card'
 import { Button } from './ui/Button';
 import { apiFetch } from '../services/api';
 
-// Fallback модели по провайдерам (если API недоступен)
+// Fallback модели по провайдерам (только 2 основных)
 const fallbackModelSuggestions = {
-  gigachat: ['GigaChat-2-Lite', 'GigaChat-2-Pro'],
-  google: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro'],
-  groq: ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant'],
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1', 'o3-mini'],
-  anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229'],
-  openrouter: ['openrouter/auto', 'openai/gpt-4o', 'anthropic/claude-3-5-sonnet'],
-  mistral: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest'],
-  cohere: ['command-r-plus', 'command-r'],
-  deepseek: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'],
-  xai: ['grok-2', 'grok-2-vision'],
-  ollama: ['llama3.2', 'mistral', 'codellama'],
-  azure: ['gpt-4o', 'gpt-4', 'gpt-35-turbo'],
-  together: ['meta-llama/Llama-3-70b', 'mistralai/Mixtral-8x7B'],
-  fireworks: ['accounts/fireworks/models/llama-v3-70b-instruct'],
-  nvidia: ['meta/llama3-70b-instruct', 'mistralai/mistral-large'],
+  openrouter: ['meta-llama/llama-3.1-8b-instruct:free', 'microsoft/phi-3-mini-4k-instruct:free', 'openrouter/auto'],
+  gigachat: ['GigaChat', 'GigaChat-Pro', 'GigaChat-Plus'],
 };
 
 export function ApiKeyForm({ provider, onSuccess, onCancel }) {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
 import { apiFetch } from '../services/api';
@@ -6,6 +6,32 @@ import { apiFetch } from '../services/api';
 export function ProviderTester({ keyId, provider, model }) {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState(null);
+  const [autoCheckDone, setAutoCheckDone] = useState(false);
+
+  // Авто-проверка статуса ключа при монтировании компонента
+  useEffect(() => {
+    if (keyId && !autoCheckDone) {
+      const autoTest = async () => {
+        setTesting(true);
+        try {
+          const response = await apiFetch(`/api/v1/keys/${keyId}/test`, {
+            method: 'POST',
+          });
+          const data = await response.json();
+          setResult(data);
+        } catch (err) {
+          setResult({
+            success: false,
+            message: `Ошибка: ${err.message}`,
+          });
+        } finally {
+          setTesting(false);
+          setAutoCheckDone(true);
+        }
+      };
+      autoTest();
+    }
+  }, [keyId, autoCheckDone]);
 
   const testConnection = async () => {
     setTesting(true);
@@ -39,11 +65,25 @@ export function ProviderTester({ keyId, provider, model }) {
     }
   };
 
+  // Статус-индикатор на основе результата
+  const getStatusIndicator = () => {
+    if (testing) return { icon: '🔄', color: 'text-yellow-500', label: 'Проверка...' };
+    if (!result) return { icon: '⚪', color: 'text-gray-500', label: 'Не проверен' };
+    if (result.success) return { icon: '🟢', color: 'text-green-500', label: 'Работает' };
+    return { icon: '🔴', color: 'text-red-500', label: 'Ошибка' };
+  };
+
+  const status = getStatusIndicator();
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">
-          🔍 Тест подключения
+        <CardTitle className="text-base flex items-center gap-2">
+          <span className={status.color}>{status.icon}</span>
+          <span>Тест подключения</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${status.color} bg-opacity-10`}>
+            {status.label}
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -83,6 +123,13 @@ export function ProviderTester({ keyId, provider, model }) {
                   Протестировано: {result.model_tested}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Информация о fallback */}
+          {result && result.success === false && provider === 'OpenRouter' && (
+            <div className="p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-500">
+              ⚠️ Если OpenRouter недоступен, система автоматически переключится на GigaChat.
             </div>
           )}
         </div>

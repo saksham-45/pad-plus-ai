@@ -104,18 +104,20 @@ class XRayTraceCollector:
         
         logger.info("✅ XRayTraceCollector инициализирован")
     
-    def start_session(self, user_message: str, metadata: Dict = None) -> str:
+    def start_session(self, user_message: str, metadata: Dict = None, request_id: str = None) -> str:
         """
         Начинает новую сессию трассировки
         
         Args:
             user_message: Исходное сообщение пользователя
             metadata: Дополнительные метаданные
+            request_id: ID сессии (если не указан, генерируется новый)
         
         Returns:
             request_id: Уникальный идентификатор сессии
         """
-        request_id = str(uuid.uuid4())
+        if request_id is None:
+            request_id = str(uuid.uuid4())
         
         session = TraceSession(
             request_id=request_id,

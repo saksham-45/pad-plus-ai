@@ -18,10 +18,23 @@ export default function HistoryPage() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [filterFavorite, setFilterFavorite] = useState(null);
 
-  // Загрузка диалогов
+  // Загрузка диалогов с кешированием в sessionStorage
   const loadDialogs = async (reset = false) => {
     setLoading(true);
     const currentOffset = reset ? 0 : offset;
+
+    // При сбросе показываем кеш сразу
+    if (reset) {
+      try {
+        const cached = sessionStorage.getItem('historyDialogs');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setDialogs(parsed.data || []);
+          setHasMore(parsed.has_more !== false);
+          setStats(parsed.stats || null);
+        }
+      } catch (_) {}
+    }
 
     try {
       const params = new URLSearchParams({
@@ -41,14 +54,20 @@ export default function HistoryPage() {
         const data = await res.json();
         if (reset) {
           setDialogs(data.data);
+          // Кешируем в sessionStorage
+          sessionStorage.setItem('historyDialogs', JSON.stringify({ data: data.data, has_more: data.has_more }));
         } else {
-          setDialogs([...dialogs, ...data.data]);
+          setDialogs(prev => [...prev, ...data.data]);
         }
         setHasMore(data.has_more);
         setOffset(currentOffset + data.limit);
+      } else {
+        const err = await res.json().catch(() => ({ detail: `Ошибка ${res.status}` }));
+        showMessage('error', err.detail || 'Ошибка загрузки истории');
       }
     } catch (error) {
       console.error('Ошибка загрузки диалогов:', error);
+      showMessage('error', 'Не удалось загрузить историю. Проверьте подключение.');
     } finally {
       setLoading(false);
     }
@@ -61,6 +80,15 @@ export default function HistoryPage() {
       if (res.ok) {
         const data = await res.json();
         setStats(data);
+        // Обновляем кеш со статистикой
+        try {
+          const cached = sessionStorage.getItem('historyDialogs');
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            parsed.stats = data;
+            sessionStorage.setItem('historyDialogs', JSON.stringify(parsed));
+          }
+        } catch (_) {}
       }
     } catch (error) {
       console.error('Ошибка загрузки статистики:', error);

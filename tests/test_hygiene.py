@@ -93,14 +93,11 @@ def test_hygiene():
         # Пытаемся запустить анализ (dry_run=True не удаляет)
         try:
             from memory.rag import get_rag
-            from memory.fact_memory import get_fact_memory
             
             rag = get_rag()
-            facts = get_fact_memory()
             
             report = hygiene.run_cleanup(
                 rag_memory=rag,
-                fact_memory=facts,
                 dry_run=True
             )
             

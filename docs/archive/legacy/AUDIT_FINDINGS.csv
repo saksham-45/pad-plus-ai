@@ -1,0 +1,23 @@
+file,line,category,severity,issue,recommendation
+.env,10,Secrets,Critical,Committed secrets and API keys in `.env`,Remove file from repo, add to .gitignore, rotate keys
+.env,13,Secrets,Critical,Committed `ENCRYPTION_KEY` and other sensitive env values,Move secrets to secure storage and remove from repo
+.env,16-17,Secrets,Critical,Committed Supabase credentials in `.env`,Replace with secure runtime secrets
+.env,21,Secrets,Critical,Committed `ADMIN_MASTER_KEY`,Rotate admin/master keys and remove file from git
+.env,50-52,Secrets,High,Committed `CSRF_SECRET_KEY` and `REDIS_URL`,Use secure env storage and remove secrets from repo
+backend/.env,12-14,Secrets,Critical,Committed Supabase keys in backend/.env,Remove from repo and use secure secrets manager
+backend/.env,20,Secrets,Critical,Committed encryption key in backend/.env,Move encryption key to protected environment variable
+render.yaml,30,Secrets,Critical,Hard-coded SUPABASE_KEY in render.yaml,Replace with Render Secret variable
+backend/runtime/litellm_service.py,91,TLS,Critical,`verify=False` in httpx client enables MITM,Enable TLS verification and remove insecure settings
+backend/runtime/litellm_service.py,368,TLS,Critical,`verify=False` in requests call disables certificate validation,Enable TLS verification
+backend/runtime/litellm_service.py,398,TLS,Critical,`verify=False` in requests call disables certificate validation,Enable TLS verification
+backend/main.py,218-219,CSRF/CORS,High,`cookie_secure=False` in CSRF middleware,Set `cookie_secure=True` for HTTPS
+backend/main.py,281,CSRF/CORS,High,`allow_origins=["*"]` allows all origins,Restrict allowed CORS origins to trusted domains
+backend/main.py,375-379,WebSocket,High,Open WebSocket accepts connections without auth,Authenticate before `await websocket.accept()`
+backend/security_middleware.py,33,Rate limiting,Medium,Rate limit storage in memory is not distributed,Use Redis or external distributed store for rate limiting
+backend/security_middleware.py,93-99,Rate limiting,Medium,In-memory per-IP rate limiting is ineffective for multiple instances,Use shared rate-limiting backend
+backend/security_middleware.py,109,Rate limiting,Medium,Rate limit tracking state stored in local memory,Use Redis or API Gateway rate limiting
+backend/core/supabase_client.py,70-89,Supabase,Medium,Opaque fallback between anon and service role keys,Make key selection explicit and avoid service key in public envs
+backend/core/supabase_client.py,134-145,Supabase,Medium,Fallback to service key if anon key missing may bypass RLS,Use explicit service role usage and secure environment separation
+backend/api/frontend_routes.py,309,RLS,Medium,Comment indicates RLS bypass using service role,Review and remove RLS bypass paths
+backend/api/document_routes.py,153,RLS,Medium,Metadata saved using service role bypasses RLS,Refactor to minimize service role usage
+backend/api/frontend_routes.py,602,Logging,Low,Logs raw API key length and prefix,Remove sensitive key logging

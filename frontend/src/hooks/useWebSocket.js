@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { getAuthToken, getRefreshToken } from '../services/api';
 
 // Глобальный экземпляр для предотвращения множественных подключений
 let globalWsInstance = null;
@@ -30,10 +31,20 @@ export function useWebSocket(url = null) {
       reconnectTimeout.current = null;
     }
 
-    const wsUrl = url || `ws://localhost:8080/ws`;
-    
+    const token = getAuthToken();
+    const refreshToken = getRefreshToken();
+    const baseWsUrl = url || `ws://localhost:8080/ws`;
+    const wsUrl = new URL(baseWsUrl);
+
+    if (token) {
+      wsUrl.searchParams.set('token', token);
+    }
+    if (refreshToken) {
+      wsUrl.searchParams.set('refresh_token', refreshToken);
+    }
+
     try {
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl.toString());
       globalWsInstance = ws;
       wsRef.current = ws;
 

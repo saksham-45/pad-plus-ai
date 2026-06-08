@@ -96,6 +96,7 @@ chroma_data/
 .mypy_cache/
 .qoder/
 .ai/
+.vs/
 
 # Production
 .env.production
@@ -109,3 +110,8 @@ chroma_data/
 *.zip
 *.tar.gz
 *.rar
+ 
+# Archive created by cleanup scripts
+/archive/
+!docs/archive/
+!docs/archive/**

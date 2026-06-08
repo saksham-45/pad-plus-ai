@@ -49,9 +49,12 @@ export function RightSidebar({ isOpen, onToggle, width, onWidthChange }) {
 
       if (activityRes.ok) {
         const activityData = await activityRes.json();
+        const requestsPerMinute = activityData.requests_per_minute ?? activityData.requestsPerMinute ??
+          activityData.dialogs_per_hour?.[activityData.dialogs_per_hour.length - 1]?.count ?? 0;
+
         setMetrics(prev => ({
           ...prev,
-          requestsPerMinute: activityData.requests_per_minute || 0,
+          requestsPerMinute,
         }));
       }
 
@@ -59,8 +62,8 @@ export function RightSidebar({ isOpen, onToggle, width, onWidthChange }) {
         const systemData = await systemRes.json();
         setMetrics(prev => ({
           ...prev,
-          activeSessions: systemData.active_sessions || 0,
-          cacheHitRate: systemData.cache_hit_rate || 0,
+          activeSessions: systemData.active_sessions ?? systemData.active_connections ?? 0,
+          cacheHitRate: systemData.cache_hit_rate ?? systemData.cacheHitRate ?? 0,
         }));
       }
     } catch (error) {
@@ -90,7 +93,7 @@ export function RightSidebar({ isOpen, onToggle, width, onWidthChange }) {
     const interval = setInterval(() => {
       fetchMetrics();
       fetchMindState();
-    }, 10000);
+    }, 60000);
     return () => clearInterval(interval);
   }, [fetchMetrics, fetchMindState]);
 
