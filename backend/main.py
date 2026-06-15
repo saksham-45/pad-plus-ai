@@ -5,9 +5,11 @@ PAD+ AI v3.5 — Главный модуль
 PAD+ = Pleasure, Arousal, Dominance + Curiosity, Confidence, Social Connection
 """
 
+import asyncio
 import json
 import logging
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -19,9 +21,13 @@ from dotenv import load_dotenv
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
+# Добавляем корень проекта в sys.path (нужно для абсолютных импортов вида backend.*)
+_project_root = str(Path(__file__).resolve().parent.parent)
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 # Настройка логирования (единожды)
 # Fix для Windows: используем UTF-8 кодировку для логов
-import sys
 if sys.platform == 'win32':
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -36,7 +42,6 @@ logging.basicConfig(
 logger = logging.getLogger("padplus")
 
 # Импорт ядра
-import sys
 sys.path.insert(0, str(Path(__file__).parent))
 
 from core.anti_directive import ANTI_DIRECTIVE, check_integrity
@@ -88,11 +93,11 @@ async def lifespan(app: FastAPI):
     
     # Запуск импульса
     logger.info("💫 Запуск импульса...")
-    sys.path.insert(0, str(Path(__file__).parent.parent))
     from scripts.impulse import start_impulse
     impulse = start_impulse()
-    logger.info(f"✅ Импульс: {impulse['question']} ({time.time()-start_time:.2f}s)")
-    
+    question = impulse.get('question') or impulse.get('primary', {}).get('question', 'неизвестно')
+    logger.info(f"✅ Импульс: {question} ({time.time()-start_time:.2f}s)")
+
     # Инициализация данных
     logger.info("📁 Инициализация директорий данных...")
     data_dir = Path(__file__).parent.parent / "data"
@@ -133,8 +138,8 @@ async def lifespan(app: FastAPI):
                     "data": data,
                     "timestamp": datetime.now().isoformat()
                 }))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
         collector.subscribe(_forward_xray_to_ws)
         logger.info("✅ X-Ray Broadcaster запущен + мост TraceCollector→WS")
     except Exception as e:
@@ -319,48 +324,43 @@ app.add_middleware(
 )
 
 
-# Подключение роутов
-# app.include_router(routes.router, prefix="/api/v1")  # Закомментировано - используем frontend_router
+# Подключение роутов (отложенный импорт для ускорения старта)
+def _register_routers(app):
+    """Регистрирует API роутеры с отложенным импортом"""
+    from api.frontend_routes import router as frontend_router
+    app.include_router(frontend_router)
 
-# Подключение роутов for frontend (аутентификация, ключи, чат)
-from api.frontend_routes import router as frontend_router
-app.include_router(frontend_router)  # Без префикса - уже есть в router
+    from api.user_routes import router as user_router
+    app.include_router(user_router)
 
-# Подключение роутов для управления пользователями и настройками
-from api.user_routes import router as user_router
-app.include_router(user_router)
+    from api.dialog_routes import router as dialog_router
+    app.include_router(dialog_router)
 
-# Подключение роутов для истории диалогов
-from api.dialog_routes import router as dialog_router
-app.include_router(dialog_router)
+    from api.document_routes import router as document_router
+    app.include_router(document_router)
 
-# Подключение роутов для управления документами и коллекциями
-from api.document_routes import router as document_router
-app.include_router(document_router)
+    from api.xray_routes import router as xray_router
+    app.include_router(xray_router)
 
-# Подключение X-Ray routes (система полной наблюдаемости)
-from api.xray_routes import router as xray_router
-app.include_router(xray_router)
+    from api.metrics_routes import router as metrics_router
+    app.include_router(metrics_router)
 
-# Подключение Metrics routes (мониторинг и метрики)
-from api.metrics_routes import router as metrics_router
-app.include_router(metrics_router)
+    from api.memory_routes import router as memory_router
+    app.include_router(memory_router)
 
-# Подключение Memory Dashboard routes
-from api.memory_routes import router as memory_router
-app.include_router(memory_router)
+    from api.knowledge_routes import router as knowledge_router
+    app.include_router(knowledge_router)
 
-# Подключение Knowledge Graph routes
-from api.knowledge_routes import router as knowledge_router
-app.include_router(knowledge_router)
+    from api.feedback_routes import router as feedback_router
+    app.include_router(feedback_router)
 
-# Подключение Feedback routes
-from api.feedback_routes import router as feedback_router
-app.include_router(feedback_router)
+    from api.healer_routes import router as healer_router
+    app.include_router(healer_router)
 
-# Подключение Debug routes (диагностика провайдеров)
-from api.debug_routes import router as debug_router
-app.include_router(debug_router)
+    from api.debug_routes import router as debug_router
+    app.include_router(debug_router)
+
+_register_routers(app)
 
 # === WEBSOCKET CONNECTION MANAGER ===
 class ConnectionManager:
@@ -490,32 +490,32 @@ async def websocket_endpoint(websocket: WebSocket):
                     from emotion.pad_model import get_pad_model
                     pad = get_pad_model()
                     state["emotion"] = pad.get_state().to_dict()
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"{__name__} error: {e}")
 
                 # RAG
                 try:
                     from memory.rag import get_rag
                     rag = get_rag()
                     state["memory"] = {"rag": rag.get_stats()}
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"{__name__} error: {e}")
 
                 # Knowledge Graph
                 try:
                     from knowledge.graph import get_knowledge_graph
                     g = get_knowledge_graph()
                     state["knowledge"] = g.get_stats()
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"{__name__} error: {e}")
 
                 # Health
                 try:
                     from core.health_monitor import get_health_monitor
                     health = get_health_monitor()
                     state["health"] = health.assess_health()
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"{__name__} error: {e}")
 
                 await manager.broadcast(state)
 

@@ -558,6 +558,46 @@ class TruthLoop:
         conn.close()
         return results[:limit]
     
+    def verify_claims(self, claims: List[Claim]) -> Dict[str, Any]:
+        """
+        Верифицирует список утверждений (API для TruthLoopPhase)
+        
+        Args:
+            claims: список утверждений для проверки
+            
+        Returns:
+            dict: overall_confidence, verified_claims, status_distribution
+        """
+        for claim in claims:
+            mem_delta, mem_for, mem_against = self.check_against_memory(claim)
+            claim.evidence_for.extend(mem_for)
+            claim.evidence_against.extend(mem_against)
+
+            cons_delta, cons_for, cons_against = self.check_self_consistency(claim, claims)
+            claim.evidence_for.extend(cons_for)
+            claim.evidence_against.extend(cons_against)
+
+            claim.confidence = self.assign_confidence(
+                claim, base_confidence=0.5,
+                memory_delta=mem_delta,
+                consistency_delta=cons_delta,
+            )
+
+            claim.status = self.determine_status(claim.confidence)
+            claim.updated_at = datetime.now()
+            self.save_claim(claim)
+
+        overall = sum(c.confidence for c in claims) / len(claims) if claims else 0.5
+
+        return {
+            "overall_confidence": round(overall, 3),
+            "verified_claims": [c.to_dict() for c in claims],
+            "status_distribution": {
+                status: sum(1 for c in claims if c.status.value == status)
+                for status in set(c.status.value for c in claims)
+            },
+        }
+
     def get_stats(self) -> Dict[str, Any]:
         """Статистика TruthLoop"""
         conn = sqlite3.connect(self.db_path)

@@ -24,6 +24,7 @@ from .phases import (
     EmotionPhase,
     PersonaPhase,
     RootsPhase,
+    IdentityPhase,
     GeneratePhase,
     TruthLoopPhase,
     SaveEpisodePhase,
@@ -68,6 +69,7 @@ class PipelineExecutor:
             ("emotion", EmotionPhase()),
             ("persona", PersonaPhase()),
             ("roots", RootsPhase()),
+            ("identity", IdentityPhase()),
             ("generate", GeneratePhase()),
             ("truth_loop", TruthLoopPhase()),
             ("save_episode", SaveEpisodePhase()),
@@ -148,8 +150,8 @@ class PipelineExecutor:
                 "pipeline_active_state",
                 0 if self._state == PipelineState.HEALTHY else 1 if self._state == PipelineState.DEGRADED else 2,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"{__name__} error: {e}")
 
     def _check_anti_loop(self, user_message: str) -> Optional[str]:
         normalized = user_message.lower().strip()[:50]
@@ -247,8 +249,8 @@ class PipelineExecutor:
                 await tb.send_pipeline_status(request_id, pname, {
                     **pdata, "status": pstatus, "duration_ms": round(dur_ms, 2)
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
 
         # X-Ray: старт сессии + стратегия
         try:
@@ -273,8 +275,8 @@ class PipelineExecutor:
                 "reason": f"Длина: {len(user_message)} символов, ключевые слова",
                 "confidence": 0.85
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"{__name__} error: {e}")
 
         # === 1. ANTI-LOOP GUARD ===
         phase_result = await AntiLoopPhase(self).execute(ctx)
@@ -286,13 +288,28 @@ class PipelineExecutor:
             try:
                 from core.xray import get_trace_collector
                 get_trace_collector().complete_session(request_id, {"reason": "anti_loop_block", "response": result.response[:200]})
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
             return result
 
         for phase_name, phase in self._phases:
             if phase is None:
                 continue
+
+            # Когнитивный снимок перед GeneratePhase (диагностика v4.0)
+            if phase_name == "generate":
+                logger.info("=== КОГНИТИВНЫЙ СНИМОК перед GeneratePhase ===")
+                cognitive_keys = ["roots_context", "persona_context", "rag_context", "episodic_context", "procedure_context", "emotion_state", "emotion_style", "intent", "strategy"]
+                for key in cognitive_keys:
+                    val = ctx.context.get(key, "")
+                    if isinstance(val, dict):
+                        val_preview = {k: v for k, v in list(val.items())[:5]}
+                    elif isinstance(val, str):
+                        val_preview = val[:120] if val else "(пусто)"
+                    else:
+                        val_preview = val
+                    logger.info(f"  {key}: {val_preview}")
+                logger.info("=== КОНЕЦ СНИМКА ===")
 
             try:
                 phase_result = await phase.execute(ctx)
@@ -303,8 +320,8 @@ class PipelineExecutor:
                     try:
                         from core.xray import get_trace_collector
                         get_trace_collector().complete_session(request_id, {"error": str(e)[:200], "phase": phase_name})
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"{__name__} error: {e}")
                     return self._create_error_result(
                         f"Критическая ошибка: {e}", start_time
                     )
@@ -331,8 +348,8 @@ class PipelineExecutor:
                                 "reason": f"degradation_stop: {phase_result.degradation.component}",
                                 "phase": phase_name,
                             })
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning(f"{__name__} error: {e}")
                         break
                     continue
                 # Фаза упала без деградации (generate, truth_loop, etc)
@@ -345,6 +362,11 @@ class PipelineExecutor:
                 ctx.context.update(phase_result.data)
 
             self._apply_phase_result(phase_name, phase_result, result)
+
+            # Skip generate if flag set (identity phase, etc.)
+            if phase_result.data and phase_result.data.get("skip_generate"):
+                logger.info(f"{phase_name}: skip_generate=True, пропускаем оставшиеся фазы")
+                break
 
             # X-Ray: мысли для ключевых фаз
             try:
@@ -371,9 +393,9 @@ class PipelineExecutor:
                         th = tv.procedure_application(pname, pd.get("steps", []))
                         await tb.send_thought(th.to_dict())
                 elif phase_name == "emotion":
-                    th = tv.emotion_update(pd.get("style", {}))
+                    th = tv.emotion_update(pd.get("emotion_style", {}))
                     await tb.send_thought(th.to_dict())
-                    await tb.send_emotion_update(pd.get("style", {}))
+                    await tb.send_emotion_update(pd.get("emotion_style", {}))
                 elif phase_name == "persona":
                     adj = pd.get("adjustments", {})
                     if adj:
@@ -393,8 +415,8 @@ class PipelineExecutor:
                 elif phase_name == "events_broadcast":
                     th = tv.event_emission("dialogue_finished")
                     await tb.send_thought(th.to_dict())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
 
             # Safety block — early return
             if phase_name == "safety" and not result.safety_passed:
@@ -403,8 +425,8 @@ class PipelineExecutor:
                 try:
                     from core.xray import get_trace_collector
                     get_trace_collector().complete_session(request_id, {"reason": "safety_block", "warning": result.safety_warning})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"{__name__} error: {e}")
                 return result
 
         # === Consolidation (встроенная логика с блокировкой) ===
@@ -430,8 +452,8 @@ class PipelineExecutor:
                 from memory.semantic import get_semantic_memory
                 semantic = get_semantic_memory()
                 semantic.record_procedure_success(applicable_procedure_id, success=True)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
 
         # === Finalize ===
         if self._degradations:
@@ -465,8 +487,8 @@ class PipelineExecutor:
                 "intent": result.intent,
                 "execution_time_ms": result.execution_time_ms,
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Experience capture failed: {e}")
 
         logger.info(
             f"Pipeline: {result.intent} | {result.strategy} | "
@@ -507,8 +529,13 @@ class PipelineExecutor:
         elif phase_name == "semantic":
             result.procedure_used = data.get("procedure_name")
 
+        elif phase_name == "identity":
+            result.response = data.get("response", "")
+            result.provider = data.get("provider", "system")
+            result.confidence = data.get("confidence", 1.0)
+
         elif phase_name == "emotion":
-            result.emotion_style = data.get("style", {})
+            result.emotion_style = data.get("emotion_style", {})
 
         elif phase_name == "generate":
             result.response = data.get("response", result.response)

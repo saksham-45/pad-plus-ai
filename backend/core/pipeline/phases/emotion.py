@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.emotion")
 
 
 class EmotionPhase(PipelinePhase):
@@ -14,12 +18,13 @@ class EmotionPhase(PipelinePhase):
             return PhaseResult(
                 success=True,
                 data={
-                    "state": state.to_dict(),
-                    "style": state.get_style(),
+                    "emotion_state": state.to_dict(),
+                    "emotion_style": state.get_style(),
                 },
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в EmotionPhase: %s", e, exc_info=True)
             return PhaseResult(
                 success=True,
-                data={"state": {}, "style": {}},
+                data={"emotion_state": {}, "emotion_style": {}},
             )

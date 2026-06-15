@@ -12,6 +12,7 @@ from .semantic import SemanticPhase
 from .emotion import EmotionPhase
 from .persona import PersonaPhase
 from .roots import RootsPhase
+from .identity import IdentityPhase
 from .generate import GeneratePhase
 from .truth_loop import TruthLoopPhase
 from .save_episode import SaveEpisodePhase
@@ -35,6 +36,7 @@ __all__ = [
     "EmotionPhase",
     "PersonaPhase",
     "RootsPhase",
+    "IdentityPhase",
     "GeneratePhase",
     "TruthLoopPhase",
     "SaveEpisodePhase",

@@ -51,6 +51,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         "/health",
         "/metrics",
         "/docs",
+        "/api/v1/chat",
         "/openapi.json",
         "/redoc",
         "/ws",

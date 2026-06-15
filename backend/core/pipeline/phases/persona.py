@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.persona")
 
 
 class PersonaPhase(PipelinePhase):
@@ -24,10 +28,11 @@ class PersonaPhase(PipelinePhase):
 
             return PhaseResult(
                 success=True,
-                data={"context": persona_context, "user_id": user_id},
+                data={"persona_context": persona_context, "user_id": user_id},
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в PersonaPhase: %s", e, exc_info=True)
             return PhaseResult(
                 success=True,
-                data={"context": "", "user_id": None},
+                data={"persona_context": "", "user_id": None},
             )

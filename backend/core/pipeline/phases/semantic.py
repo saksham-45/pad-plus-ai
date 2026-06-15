@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.semantic")
 
 
 class SemanticPhase(PipelinePhase):
@@ -26,13 +30,14 @@ class SemanticPhase(PipelinePhase):
             return PhaseResult(
                 success=True,
                 data={
-                    "context": procedure_context,
+                    "procedure_context": procedure_context,
                     "procedure_name": procedure_name,
                     "procedure_id": procedure_id,
                 },
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в SemanticPhase: %s", e, exc_info=True)
             return PhaseResult(
                 success=True,
-                data={"context": "", "procedure_name": None, "procedure_id": None},
+                data={"procedure_context": "", "procedure_name": None, "procedure_id": None},
             )

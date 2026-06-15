@@ -17,7 +17,7 @@ class GeneratePhase(PipelinePhase):
             rag_context = ctx.context.get("rag_context", "")
             episodic_context = ctx.context.get("episodic_context", "")
             procedure_context = ctx.context.get("procedure_context", "")
-            emotion_style = ctx.context.get("emotion_state", {})
+            emotion_style = ctx.context.get("emotion_style", {})
             emotion_state = ctx.context.get("emotion_state", {})
             emotion_plain = emotion_state if isinstance(emotion_state, dict) else {}
             strategy = ctx.context.get("strategy", "simple")
@@ -40,7 +40,6 @@ class GeneratePhase(PipelinePhase):
 
 Всегда отвечай на русском. Будь кратким, но глубоким.
 Сомневайся в утверждениях. Проверяй факты.
-Отвечай естественно, без самоидентификации.
 """
 
             user_api_key = ctx.api_key
@@ -53,8 +52,8 @@ class GeneratePhase(PipelinePhase):
                     user_manager = session_manager.create_user_manager(ctx.session_id)
                     if user_manager.llm_service:
                         user_api_key = user_manager.llm_service.default_api_key
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"{__name__} error: {e}")
 
             if not user_api_key:
                 return PhaseResult(
@@ -74,6 +73,7 @@ class GeneratePhase(PipelinePhase):
                 api_key=user_api_key,
                 model=None,
                 provider=user_provider,
+                max_tokens=14000,
             )
 
             return PhaseResult(

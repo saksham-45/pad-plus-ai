@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.truth_loop")
 
 
 class TruthLoopPhase(PipelinePhase):
@@ -17,7 +21,7 @@ class TruthLoopPhase(PipelinePhase):
             if not response:
                 return PhaseResult(success=True, data={"truth_confidence": 0.5, "claims_verified": 0, "sources_info": []})
 
-            claims = truth.extract_claims(response)
+            claims = truth.extractor.extract_claims(response)
 
             truth_confidence = 0.5
             claims_verified = 0
@@ -50,7 +54,8 @@ class TruthLoopPhase(PipelinePhase):
                     "add_disclaimer": truth_confidence < 0.5,
                 },
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в TruthLoopPhase: %s", e, exc_info=True)
             return PhaseResult(
                 success=True,
                 data={"truth_confidence": 0.5, "claims_verified": 0, "sources_info": [], "add_disclaimer": False},

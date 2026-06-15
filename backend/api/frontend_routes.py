@@ -994,11 +994,11 @@ async def refresh_key_status(
     from core.encryption import get_encryptor
 
     user_id = current_user["id"]
-    encryptor = get_encryptor()
-    
     supabase = get_db_client(current_user)
     if not supabase:
         raise HTTPException(status_code=500, detail="БД не подключена")
+
+    encryptor = get_encryptor()
     
     # Получаем ключ
     key_result = supabase.table("user_api_keys")\
@@ -1076,18 +1076,6 @@ async def chat(
 ):
     """
     Чат с AI с автоматическим определением быстрого/медленного режима
-
-    Быстрые запросы (< 10 слов, простые паттерны):
-    - Приветствия, благодарности
-    - Короткие вопросы
-    - Ответы за 1-2 секунды
-    
-    Медленные запросы (сложные вопросы, анализ):
-    - Требуют проверки фактов (TruthLoop)
-    - Используют память (RAG)
-    - Ответы за 3-7 секунд
-    
-    Использует ключ пользователя из БД
     """
     from runtime.provider_manager import get_provider_manager
     from core.pipeline import get_pipeline
@@ -1241,7 +1229,7 @@ async def chat(
             dialog_id = request.dialog_id
 
             try:
-                if dialog_id:
+                if request.dialog_id:
                     # Обновляем существующий диалог
                     try:
                         current = supabase.table("dialogs").select("message_count").eq("id", dialog_id).execute()
@@ -1492,8 +1480,8 @@ async def get_activity_metrics(hours: int = 24):
 
         activity_data["requests_per_minute"] = last_hour_requests
         return activity_data
-    except Exception:
-        # Возвращаем пустые данные если метрики не настроены
+    except Exception as e:
+        logger.warning(f"Activity metrics unavailable: {e}")
         return {
             "dialogs_per_hour": [],
             "requests_per_minute": 0,
@@ -1921,33 +1909,4 @@ async def list_provider_models(provider_id: str, current_user: dict = Depends(ge
     return {"models": models}
 
 
-# ============================================================================
-# X-RAY — Система наблюдения
-# ============================================================================
-
-@router.get("/xray/recent")
-async def get_xray_recent(limit: int = 20):
-    """Последние трейсы"""
-    from core.xray import get_xray_history
-    history = get_xray_history()
-    return {"traces": history.get_recent(limit)}
-
-
-@router.get("/xray/{trace_id}")
-async def get_xray_trace(trace_id: str):
-    """Детали конкретного трейса"""
-    from core.xray import get_xray_history
-    history = get_xray_history()
-    trace = history.get_trace(trace_id)
-    if not trace:
-        raise HTTPException(status_code=404, detail="Trace not found")
-    return trace
-
-
-@router.get("/xray/stats")
-async def get_xray_stats():
-    """Статистика X-Ray"""
-    from core.xray import get_xray_history
-    history = get_xray_history()
-    return history.get_stats()
 

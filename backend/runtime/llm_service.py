@@ -61,8 +61,8 @@ async def acompletion(response: Any) -> Any:
             if asyncio.iscoroutine(data):
                 data = await data
             return data
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"{__name__} error: {e}")
     return response
 
 
@@ -74,8 +74,8 @@ def _object_to_dict(obj: Any) -> Dict[str, Any]:
     try:
         if hasattr(obj, "items") and callable(obj.items):
             return dict(obj.items())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"{__name__} error: {e}")
     result: Dict[str, Any] = {}
     for attr in dir(obj):
         if attr.startswith("_"):
@@ -109,7 +109,6 @@ DEFAULT_MODELS = {
 
 # Бесплатные модели OpenRouter
 OPENROUTER_FREE_MODELS = [
-    "meta-llama/llama-3.1-8b-instruct:free",
     "microsoft/phi-3-mini-4k-instruct:free",
     "google/gemma-2b-it:free",
     "mistralai/mistral-7b-instruct:free",

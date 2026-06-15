@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.episodic")
 
 
 class EpisodicPhase(PipelinePhase):
@@ -23,12 +27,13 @@ class EpisodicPhase(PipelinePhase):
             return PhaseResult(
                 success=True,
                 data={
-                    "context": context_text,
+                    "episodic_context": context_text,
                     "count": len(similar) if similar else 0,
                 },
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в EpisodicPhase: %s", e, exc_info=True)
             return PhaseResult(
                 success=True,
-                data={"context": "", "count": 0},
+                data={"episodic_context": "", "count": 0},
             )

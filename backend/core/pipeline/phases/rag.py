@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.rag")
 
 
 class RagPhase(PipelinePhase):
@@ -18,13 +22,14 @@ class RagPhase(PipelinePhase):
             return PhaseResult(
                 success=True,
                 data={
-                    "context": context_data or "",
+                    "rag_context": context_data or "",
                     "rag_used": bool(context_data),
                     "sources": sources,
                 },
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в RagPhase: %s", e, exc_info=True)
             return PhaseResult(
                 success=True,
-                data={"context": "", "rag_used": False, "sources": {"count": 0, "confidence": 0.0}},
+                data={"rag_context": "", "rag_used": False, "sources": {"count": 0, "confidence": 0.0}},
             )
