@@ -33,6 +33,7 @@ T = TypeVar('T')
 from core.encryption import get_encryptor
 from core.supabase_client import (
     get_supabase,
+    get_supabase_service,
     get_db_client,
     check_database_connection
 )
@@ -283,49 +284,59 @@ async def register(data: UserRegister):
     
     try:
         # 1. Создаём через Supabase Auth
-        auth_response = supabase.auth.sign_up({
-            "email": data.email,
-            "password": data.password,
-            "options": {
-                "data": {
-                    "full_name": data.full_name
+        # Сначала пробуем через Admin API (service_role — без лимитов)
+        service_client = get_supabase_service()
+        user_id = None
+
+        if service_client:
+            try:
+                admin_response = service_client.auth.admin.create_user({
+                    "email": data.email,
+                    "password": data.password,
+                    "email_confirm": True,
+                    "user_metadata": {"full_name": data.full_name or ""}
+                })
+                user_id = admin_response.user.id
+            except Exception as admin_err:
+                logger.warning(f"Admin API не сработал, пробую sign_up: {admin_err}")
+
+        if not user_id:
+            auth_response = supabase.auth.sign_up({
+                "email": data.email,
+                "password": data.password,
+                "options": {
+                    "data": {
+                        "full_name": data.full_name
+                    }
                 }
-            }
-        })
-        
-        if not auth_response.user:
-            raise HTTPException(status_code=400, detail="Ошибка регистрации")
-        
-        user_id = auth_response.user.id
-        
+            })
+            if not auth_response.user:
+                raise HTTPException(status_code=400, detail="Ошибка регистрации")
+            user_id = auth_response.user.id
+
         # 2. Создаём профиль в public.users
-        # RLS теперь разрешит запись потому что пользователь аутентифицирован
         profile_data = {
             "id": user_id,
             "email": data.email,
-            "hashed_password": "",  # Не используется, пароль в auth.users
+            "hashed_password": "",
             "full_name": data.full_name or "",
             "avatar_url": None,
-            "email_verified": False,
+            "email_verified": True,
             "is_active": True
         }
-        
-        # Пробуем вставить с отключенным RLS check (через service role если есть)
-        # Или используем обычный insert если RLS настроен правильно
+
         try:
             supabase.table("users").insert(profile_data).execute()
-        except Exception as e:
-            # Если RLS не пускает, пробуем обновить существующую запись
-            # (может быть создана триггером)
+        except Exception:
             pass
-        
+
         return {
             "id": user_id,
             "email": data.email,
             "full_name": data.full_name,
             "created_at": datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         error_msg = str(e)
         if "User already registered" in error_msg:
