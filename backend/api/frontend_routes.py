@@ -314,7 +314,7 @@ async def register(data: UserRegister):
                 raise HTTPException(status_code=400, detail="Ошибка регистрации")
             user_id = auth_response.user.id
 
-        # 2. Создаём профиль в public.users
+        # 2. Создаём профиль в public.users (через service_role — обход RLS)
         profile_data = {
             "id": user_id,
             "email": data.email,
@@ -325,10 +325,21 @@ async def register(data: UserRegister):
             "is_active": True
         }
 
-        try:
-            supabase.table("users").insert(profile_data).execute()
-        except Exception:
-            pass
+        service_client = get_supabase_service()
+        if service_client:
+            try:
+                service_client.table("users").insert(profile_data).execute()
+            except Exception as insert_err:
+                logger.warning(f"service client insert failed, trying anon: {insert_err}")
+                try:
+                    supabase.table("users").insert(profile_data).execute()
+                except Exception:
+                    pass
+        else:
+            try:
+                supabase.table("users").insert(profile_data).execute()
+            except Exception:
+                pass
 
         return {
             "id": user_id,
