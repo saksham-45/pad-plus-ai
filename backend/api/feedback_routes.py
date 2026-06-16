@@ -46,8 +46,8 @@ async def submit_feedback(
                 user_resp = supabase.auth.get_user(token)
                 if user_resp and user_resp.user:
                     user_id = user_resp.user.id
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
 
         record = {
             "rating": data.rating,
@@ -77,5 +77,6 @@ async def get_feedback_stats():
             "positive": stats.get("positive", stats.get("likes", 0)),
             "negative": stats.get("negative", stats.get("dislikes", 0)),
         }
-    except Exception:
+    except Exception as e:
+        logger.warning("Ошибка получения статистики feedback: %s", e)
         return {"total_ratings": 0, "positive": 0, "negative": 0}

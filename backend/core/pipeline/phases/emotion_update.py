@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.emotion_update")
 
 
 class EmotionUpdatePhase(PipelinePhase):
@@ -16,5 +20,6 @@ class EmotionUpdatePhase(PipelinePhase):
             else:
                 pad.apply_event("new_knowledge", 0.2)
             return PhaseResult(success=True)
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в EmotionUpdatePhase: %s", e, exc_info=True)
             return PhaseResult(success=True)

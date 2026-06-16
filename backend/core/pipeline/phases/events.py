@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.events")
 
 
 class EventsBroadcastPhase(PipelinePhase):
@@ -31,5 +35,6 @@ class EventsBroadcastPhase(PipelinePhase):
             )
 
             return PhaseResult(success=True)
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в EventsBroadcastPhase: %s", e, exc_info=True)
             return PhaseResult(success=True)

@@ -273,7 +273,7 @@ class ValidatedRequest:
             if body:
                 return json.loads(body)
         except (json.JSONDecodeError, Exception):
-            pass
+            logger.debug("Не удалось распарсить тело запроса как JSON")
         
         return None
     

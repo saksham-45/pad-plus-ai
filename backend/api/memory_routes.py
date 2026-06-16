@@ -23,10 +23,12 @@ async def get_memory_dashboard():
         from memory.episodic import get_episodic_memory
         mem = get_episodic_memory()
         stats = mem.get_stats() if hasattr(mem, 'get_stats') else {}
+        by_topic = stats.get("by_topic", {})
         result["episodic"] = {
-            "total_episodes": stats.get("total_episodes", stats.get("total_episodic_memory", 0)),
-            "dialogs": stats.get("dialogs", stats.get("total_dialogs", 0)),
-            "topics": stats.get("topics", []),
+            "total_episodes": stats.get("total_episodes", 0),
+            "total_relations": stats.get("total_relations", 0),
+            "avg_significance": stats.get("avg_significance", 0),
+            "topics": list(by_topic.keys())[:8],
         }
     except Exception as e:
         result["episodic"] = {"status": "unavailable", "error": str(e)[:100]}
@@ -36,9 +38,13 @@ async def get_memory_dashboard():
         from memory.semantic import get_semantic_memory
         mem = get_semantic_memory()
         stats = mem.get_stats() if hasattr(mem, 'get_stats') else {}
+        by_type = stats.get("by_type", {})
+        procedures = stats.get("procedures", {})
         result["semantic"] = {
-            "concepts": stats.get("concepts", stats.get("total_concepts", 0)),
-            "procedures": stats.get("procedures", stats.get("total_procedures", 0)),
+            "total_knowledge": stats.get("total_knowledge", 0),
+            "concepts": by_type.get("conceptual", 0),
+            "procedures": procedures.get("count", 0) if isinstance(procedures, dict) else 0,
+            "avg_confidence": stats.get("avg_confidence", 0),
         }
     except Exception as e:
         result["semantic"] = {"status": "unavailable", "error": str(e)[:100]}
@@ -50,8 +56,10 @@ async def get_memory_dashboard():
         stats = mem.get_stats() if hasattr(mem, 'get_stats') else {}
         ctx = mem.export_for_context(max_items=5) if hasattr(mem, 'export_for_context') else ""
         result["roots"] = {
-            "total_principles": stats.get("total_principles", stats.get("total_roots", 0)),
-            "preview": ctx[:300] if ctx else "",
+            "total_principles": stats.get("total_roots", stats.get("total_principles", 0)),
+            "by_category": stats.get("by_category", {}),
+            "immutable_count": stats.get("immutable_count", 0),
+            "preview": ctx[:500] if ctx else "",
         }
     except Exception as e:
         result["roots"] = {"status": "unavailable", "error": str(e)[:100]}
@@ -62,8 +70,7 @@ async def get_memory_dashboard():
         mem = get_rag()
         stats = mem.get_stats() if hasattr(mem, 'get_stats') else {}
         result["rag"] = {
-            "documents": stats.get("documents", stats.get("total_documents", 0)),
-            "queries_today": stats.get("queries_today", 0),
+            "total_dialogs": stats.get("total_dialogs", 0),
         }
     except Exception as e:
         result["rag"] = {"status": "unavailable", "error": str(e)[:100]}
@@ -74,7 +81,9 @@ async def get_memory_dashboard():
         mem = get_persona()
         stats = mem.get_stats() if hasattr(mem, 'get_stats') else {}
         result["persona"] = {
-            "traits": stats.get("traits", stats.get("traits_count", 0)),
+            "traits": stats.get("traits_count", 0),
+            "users_known": stats.get("users_known", 0),
+            "total_interactions": stats.get("total_interactions", 0),
         }
     except Exception as e:
         result["persona"] = {"status": "unavailable", "error": str(e)[:100]}
@@ -84,9 +93,12 @@ async def get_memory_dashboard():
         from core.xray.meta_learner import get_meta_learner
         mem = get_meta_learner()
         stats = mem.get_stats() if hasattr(mem, 'get_stats') else {}
+        strategies_dict = stats.get("strategies", {})
         result["meta_learner"] = {
-            "total_trials": stats.get("total_trials", 0),
-            "strategies": stats.get("strategies", {}),
+            "total_decisions": stats.get("total_decisions", 0),
+            "total_success": stats.get("total_success", 0),
+            "overall_success_rate": stats.get("overall_success_rate", 0),
+            "strategies_count": len(strategies_dict) if isinstance(strategies_dict, dict) else 0,
         }
     except Exception as e:
         result["meta_learner"] = {"status": "unavailable", "error": str(e)[:100]}
@@ -97,9 +109,10 @@ async def get_memory_dashboard():
         mem = get_feedback_system()
         stats = mem.get_stats() if hasattr(mem, 'get_stats') else {}
         result["feedback"] = {
-            "total_ratings": stats.get("total_ratings", 0),
-            "positive": stats.get("positive", 0),
-            "negative": stats.get("negative", 0),
+            "total_feedback": stats.get("total_feedback", 0),
+            "positive": stats.get("positive_count", 0),
+            "negative": stats.get("negative_count", 0),
+            "satisfaction_rate": stats.get("satisfaction_rate", 0),
         }
     except Exception as e:
         result["feedback"] = {"status": "unavailable", "error": str(e)[:100]}

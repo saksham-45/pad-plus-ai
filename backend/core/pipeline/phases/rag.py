@@ -12,7 +12,7 @@ class RagPhase(PipelinePhase):
 
     async def execute(self, ctx: PipelineContext) -> PhaseResult:
         try:
-            from memory.rag import get_rag
+            from memory import get_rag
             rag = get_rag()
             user_id = ctx.context.get("user_id") if ctx.context else None
             context_data = rag.get_context(ctx.user_message, user_id=user_id)

@@ -54,6 +54,8 @@ export function ChatInterface({ selectedModel, user }) {
           }
           return updated;
         });
+        // Авто-скролл при получении стримингового контента
+        setTimeout(scrollToBottom, 50);
       }
     }
   }, [ws.messages]);
@@ -149,7 +151,7 @@ export function ChatInterface({ selectedModel, user }) {
   };
 
   return (
-    <Card className="h-full flex flex-col">
+    <Card className="h-full flex flex-col min-h-0">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <span>💬</span>
@@ -161,7 +163,7 @@ export function ChatInterface({ selectedModel, user }) {
           )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col">
+      <CardContent className="flex-1 flex flex-col min-h-0">
         {/* Сообщения */}
         <div className="flex-1 overflow-y-auto space-y-4 mb-4 min-h-0">
           {messages.length === 0 ? (
@@ -189,33 +191,57 @@ export function ChatInterface({ selectedModel, user }) {
                   </div>
                   {msg.role === 'assistant' && !msg.streaming && (
                     <div className="flex gap-1 mt-1">
-                      <button
-                        onClick={async () => {
-                          await apiFetch('/api/v1/feedback', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ rating: 1 }),
-                          }).catch(() => {});
-                        }}
-                        className="text-xs text-gray-500 hover:text-green-400 transition-colors px-1"
-                        title="Нравится"
-                      >👍</button>
-                      <button
-                        onClick={async () => {
-                          await apiFetch('/api/v1/feedback', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ rating: -1 }),
-                          }).catch(() => {});
-                        }}
-                        className="text-xs text-gray-500 hover:text-red-400 transition-colors px-1"
-                        title="Не нравится"
+                        <button
+                          onClick={async () => {
+                            await apiFetch('/api/v1/feedback', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ rating: 1, dialog_id: dialogId }),
+                            }).catch(() => {});
+                          }}
+                          className="text-xs text-gray-500 hover:text-green-400 transition-colors px-1"
+                          title="Нравится"
+                        >👍</button>
+                        <button
+                          onClick={async () => {
+                            await apiFetch('/api/v1/feedback', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ rating: -1, dialog_id: dialogId }),
+                            }).catch(() => {});
+                          }}
+                          className="text-xs text-gray-500 hover:text-red-400 transition-colors px-1"
+                          title="Не нравится"
                       >👎</button>
                     </div>
                   )}
                 </div>
             ))
           )}
+          {/* === FALLBACK ПРЕДУПРЕЖДЕНИЕ === */}
+          {lastResponseMeta?.meta?.fallback_used && (
+            <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+              <div className="flex items-center gap-2 text-yellow-500">
+                <span className="text-lg">⚠️</span>
+                <span className="text-sm font-medium">Использован fallback провайдера</span>
+              </div>
+              <div className="text-xs text-text-secondary mt-1 ml-4">
+                {lastResponseMeta.meta.fallback_from && lastResponseMeta.meta.fallback_to && (
+                  <>
+                    <span className="line-through opacity-70">{lastResponseMeta.meta.fallback_from}</span>
+                    <span> → </span>
+                    <span className="font-medium text-green-500">{lastResponseMeta.meta.fallback_to}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* === COGNITIVE UX LAYER: Панель метрик === */}
+          {showMetrics && lastResponseMeta && (
+            <CognitivePanel {...lastResponseMeta} />
+          )}
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -249,29 +275,6 @@ export function ChatInterface({ selectedModel, user }) {
           </Button>
         </div>
         
-        {/* === FALLBACK ПРЕДУПРЕЖДЕНИЕ === */}
-        {lastResponseMeta?.meta?.fallback_used && (
-          <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-            <div className="flex items-center gap-2 text-yellow-500">
-              <span className="text-lg">⚠️</span>
-              <span className="text-sm font-medium">Использован fallback провайдера</span>
-            </div>
-            <div className="text-xs text-text-secondary mt-1 ml-4">
-              {lastResponseMeta.meta.fallback_from && lastResponseMeta.meta.fallback_to && (
-                <>
-                  <span className="line-through opacity-70">{lastResponseMeta.meta.fallback_from}</span>
-                  <span> → </span>
-                  <span className="font-medium text-green-500">{lastResponseMeta.meta.fallback_to}</span>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* === COGNITIVE UX LAYER: Панель метрик === */}
-        {showMetrics && lastResponseMeta && (
-          <CognitivePanel {...lastResponseMeta} />
-        )}
       </CardContent>
     </Card>
   );

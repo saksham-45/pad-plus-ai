@@ -1,5 +1,5 @@
 """
-PAD+ AI v3.5 — Главный модуль
+PAD+ AI v4.0 — Главный модуль
 
 Когнитивный слой, добавляющий эмоции и самосознание любому LLM.
 PAD+ = Pleasure, Arousal, Dominance + Curiosity, Confidence, Social Connection
@@ -64,7 +64,7 @@ from fastapi.staticfiles import StaticFiles
 async def lifespan(app: FastAPI):
     """Жизненный цикл приложения"""
     # === STARTUP ===
-    logger.info("🧠 PAD+ AI v3.5 запускается...")
+    logger.info("🧠 PAD+ AI v4.0 запускается...")
     start_time = time.time()
     
     # Регистрация зависимостей (Вторая очередь улучшений)
@@ -357,8 +357,24 @@ def _register_routers(app):
     from api.healer_routes import router as healer_router
     app.include_router(healer_router)
 
-    from api.debug_routes import router as debug_router
-    app.include_router(debug_router)
+    if os.getenv("DEBUG", "false").lower() == "true":
+        from api.debug_routes import router as debug_router
+        app.include_router(debug_router)
+        logger.info("🔧 Debug routes включены (DEBUG=true)")
+    else:
+        logger.info("🔧 Debug routes отключены (DEBUG=false)")
+
+    from api.experience_routes import router as experience_router
+    app.include_router(experience_router)
+
+    from api.persona_routes import router as persona_router
+    app.include_router(persona_router)
+
+    from api.impulse_routes import router as impulse_router
+    app.include_router(impulse_router)
+
+    from api.routes import router as root_router
+    app.include_router(root_router)
 
 _register_routers(app)
 

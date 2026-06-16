@@ -85,21 +85,34 @@ export function ModelSelector({ value, onChange, keys = [] }) {
   // Собираем модели из ключей (если БД подключена)
   const dbModels = keys
     .filter(k => k.is_active)
-    .map(key => ({
-      id: key.model_preference || 'auto',
-      name: key.model_preference === 'auto' 
-        ? `${key.provider_display_name} (Auto)` 
-        : key.model_preference,
-      provider: key.provider,
-      providerName: key.provider_display_name,
-      icon: providerIcons[key.provider] || '🔗',
-      isDefault: key.is_default,
-      keyId: key.id,
-    }))
+    .map(key => {
+      const modelPref = key.model_preference || 'auto';
+      // Исправляем формат: если модель начинается с provider/ (например, openrouter/auto),
+      // используем её как есть. Если просто 'auto' или имя модели — добавляем provider/
+      let modelId = modelPref;
+      if (modelPref === 'auto') {
+        modelId = `${key.provider}/auto`;
+      } else if (!modelPref.includes('/')) {
+        modelId = `${key.provider}/${modelPref}`;
+      }
+      
+      return {
+        id: modelId,
+        name: modelPref === 'auto' 
+          ? `${key.provider_display_name} (Auto)` 
+          : modelPref,
+        provider: key.provider,
+        providerName: key.provider_display_name,
+        icon: providerIcons[key.provider] || '🔗',
+        isDefault: key.is_default,
+        keyId: key.id,
+      };
+    })
     .filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
 
-  // Приоритет: ключи пользователя → API → fallback
-  const availableModels = dbModels.length > 0 ? dbModels : (apiModels.length > 0 ? apiModels : fallbackModels);
+  // Приоритет: ключи пользователя → API → пустой список (без ключей fallback-модели бесполезны)
+  const hasConfiguredKeys = keys.some(k => k.is_active || k.is_system_configured);
+  const availableModels = dbModels.length > 0 ? dbModels : (apiModels.length > 0 ? apiModels : (hasConfiguredKeys ? fallbackModels : []));
 
   // Фильтруем модели
   const filteredModels = availableModels.filter(model => {

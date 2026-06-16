@@ -1,21 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import ChatInterface from './components/ChatInterface';
-import InstructionsPage from './pages/InstructionsPage';
-import ProvidersPage from './pages/ProvidersPage';
-import ConnectedProvidersPage from './pages/ConnectedProvidersPage';
-import XRayPage from './pages/XRayPage';
-import MemoryPage from './pages/MemoryPage';
-import KnowledgePage from './pages/KnowledgePage';
-import SettingsPage from './pages/SettingsPage';
-import HistoryPage from './pages/HistoryPage';
-import DocumentsPage from './pages/DocumentsPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import MobileMenu from './components/MobileMenu';
 import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
 import { Button } from './components/ui/Button';
 import { NotificationProvider } from './hooks/useNotifications';
+
+const InstructionsPage = lazy(() => import('./pages/InstructionsPage'));
+const ProvidersPage = lazy(() => import('./pages/ProvidersPage'));
+const ConnectedProvidersPage = lazy(() => import('./pages/ConnectedProvidersPage'));
+const XRayPage = lazy(() => import('./pages/XRayPage'));
+const MemoryPage = lazy(() => import('./pages/MemoryPage'));
+const KnowledgePage = lazy(() => import('./pages/KnowledgePage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const HistoryPage = lazy(() => import('./pages/HistoryPage'));
+const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
+const ExperiencePage = lazy(() => import('./pages/ExperiencePage'));
+const HealerPage = lazy(() => import('./pages/HealerPage'));
 
 // Вкладки навигации
 const tabs = [
@@ -24,8 +28,10 @@ const tabs = [
   { id: 'documents', label: '📄 Документы', icon: '📄' },
   { id: 'history', label: '📜 История', icon: '📜' },
   { id: 'xray', label: '🔬 X-Ray', icon: '🔬' },
+  { id: 'healer', label: '🧬 HEALER', icon: '🧬' },
   { id: 'memory', label: '🧠 Память', icon: '🧠' },
   { id: 'knowledge', label: '🔗 Знания', icon: '🔗' },
+  { id: 'experience', label: '📊 Опыт', icon: '📊' },
   { id: 'settings', label: '⚙️ Настройки', icon: '⚙️' },
   { id: 'instructions', label: '📖 Инструкции', icon: '📖' },
   { id: 'providers', label: '⚡ Провайдеры', icon: '⚡' },
@@ -320,7 +326,7 @@ function App() {
 
             <h1 className="text-xl font-bold text-text-primary">
               PAD+ AI
-              <span className="text-xs text-text-secondary ml-2">v3.5</span>
+              <span className="text-xs text-text-secondary ml-2">v4.0</span>
             </h1>
             
             {/* Навигация - скрываем на мобильных */}
@@ -377,26 +383,32 @@ function App() {
         }}
       >
         <div className="px-4">
-          {activeTab === 'home' && <Dashboard />}
-          {activeTab === 'chat' && (
-            <div className="h-[calc(100vh-120px)]">
-              <ChatInterface selectedModel={selectedModel} user={user} />
+          <Suspense fallback={<div className="p-8 text-center text-text-secondary">Загрузка...</div>}>
+            {activeTab === 'home' && <Dashboard />}
+            {activeTab === 'chat' && (
+              <div className="h-[calc(100vh-120px)]">
+                <ChatInterface selectedModel={selectedModel} user={user} />
+              </div>
+            )}
+            {activeTab === 'instructions' && <InstructionsPage />}
+            {activeTab === 'providers' && <ProvidersPage />}
+            {activeTab === 'connected-providers' && <ConnectedProvidersPage />}
+            {activeTab === 'xray' && <XRayPage />}
+            {activeTab === 'healer' && <HealerPage />}
+            {activeTab === 'settings' && <SettingsPage />}
+
+            {/* History — единственная страница с hidden (сохраняет состояние скролла) */}
+            <div className={activeTab === 'history' ? '' : 'hidden'}>
+              <ErrorBoundary key="history">
+                <HistoryPage />
+              </ErrorBoundary>
             </div>
-          )}
-          {activeTab === 'instructions' && <InstructionsPage />}
-          {activeTab === 'providers' && <ProvidersPage />}
-          {activeTab === 'connected-providers' && <ConnectedProvidersPage />}
-          {activeTab === 'xray' && <XRayPage />}
-          {activeTab === 'settings' && <SettingsPage />}
 
-          {/* History — единственная страница с hidden (сохраняет состояние скролла) */}
-          <div className={activeTab === 'history' ? '' : 'hidden'}>
-            <HistoryPage />
-          </div>
-
-          {activeTab === 'documents' && <DocumentsPage />}
-          {activeTab === 'memory' && <MemoryPage />}
-          {activeTab === 'knowledge' && <KnowledgePage />}
+            {activeTab === 'documents' && <DocumentsPage />}
+            {activeTab === 'memory' && <MemoryPage />}
+            {activeTab === 'knowledge' && <KnowledgePage />}
+            {activeTab === 'experience' && <ExperiencePage />}
+          </Suspense>
         </div>
       </main>
       </div>

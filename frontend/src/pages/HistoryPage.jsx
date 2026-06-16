@@ -118,6 +118,7 @@ export default function HistoryPage() {
       }
     } catch (error) {
       console.error('Ошибка поиска:', error);
+      showMessage('error', 'Ошибка поиска');
     }
   };
 
@@ -131,6 +132,7 @@ export default function HistoryPage() {
       }
     } catch (error) {
       console.error('Ошибка загрузки диалога:', error);
+      showMessage('error', 'Ошибка загрузки диалога');
     }
   };
 

@@ -46,11 +46,13 @@ data/
 # IDE
 .idea/
 .vscode/
+.vs/
 *.swp
 *.swo
 *.sublime-project
 *.sublime-workspace
 .DS_Store
+.kilo/
 
 # OS
 .DS_Store
@@ -91,6 +93,14 @@ chroma_data/
 *.swp
 *~
 .~*
+
+# Dev & session artifacts
+.playwright-mcp/
+traces/
+spans/
+experiments/
+index.json
+healer_viewer*.png
 
 # IDE Caches
 .mypy_cache/

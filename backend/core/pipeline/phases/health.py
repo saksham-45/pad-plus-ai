@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.health")
 
 
 class HealthMonitorPhase(PipelinePhase):
@@ -26,7 +30,8 @@ class HealthMonitorPhase(PipelinePhase):
                 success=True,
                 data={"health_score": health_score},
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в HealthMonitorPhase: %s", e, exc_info=True)
             return PhaseResult(
                 success=True,
                 data={"health_score": 0.0},

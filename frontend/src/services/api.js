@@ -74,6 +74,11 @@ const buildHeaders = (options) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  const refresh = getRefreshToken();
+  if (refresh) {
+    headers['X-Refresh-Token'] = refresh;
+  }
+
   Object.assign(headers, existing);
   return headers;
 };

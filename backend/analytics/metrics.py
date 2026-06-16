@@ -207,8 +207,8 @@ class Analytics:
                 if role in by_role:
                     by_role[role] += 1
                 total_tokens += data.get('tokens', 0)
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
         
         # Количество сессий
         cursor.execute("""
@@ -261,8 +261,8 @@ class Analytics:
                 hourly[ts.hour] += 1
                 weekday[ts.weekday()] += 1
                 daily[ts.strftime("%Y-%m-%d")] += 1
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
         
         conn.close()
         
@@ -314,8 +314,8 @@ class Analytics:
                 topic = data.get('topic')
                 if topic:
                     topics[topic] += 1
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
         
         conn.close()
         
@@ -391,8 +391,8 @@ class Analytics:
                 ts = datetime.fromisoformat(row['timestamp'])
                 hour_key = ts.strftime("%H:00")
                 hourly_data[hour_key] += 1
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
 
         conn.close()
 

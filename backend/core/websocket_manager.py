@@ -189,8 +189,8 @@ class WebSocketManager:
         if client_id in self._connections:
             try:
                 await self._connections[client_id].close(code=1000, reason="Heartbeat timeout")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
         self.disconnect(client_id)
 
     def disconnect(self, client_id: str):

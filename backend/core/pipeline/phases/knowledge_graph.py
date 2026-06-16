@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.knowledge_graph")
 
 
 class KnowledgeGraphPhase(PipelinePhase):
@@ -21,7 +25,8 @@ class KnowledgeGraphPhase(PipelinePhase):
                     "confidence": 0.7 if concept_names else 0.0,
                 },
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в KnowledgeGraphPhase: %s", e, exc_info=True)
             return PhaseResult(
                 success=True,
                 data={"concepts": [], "confidence": 0.0},

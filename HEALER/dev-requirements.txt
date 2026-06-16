@@ -1,0 +1,4 @@
+# Dev/CI dependencies (not needed for runtime — HEALER is zero-dep)
+pytest>=8.0
+mypy>=1.8
+ruff>=0.3

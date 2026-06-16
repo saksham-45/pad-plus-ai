@@ -111,8 +111,8 @@ async def pipeline_stats() -> Dict[str, Any]:
             from core.metrics_collector import get_metrics
             metrics = get_metrics()
             stats["metrics"] = metrics.get_summary()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"{__name__} error: {e}")
         
         return stats
     except Exception as e:

@@ -135,8 +135,8 @@ class PADModel:
                     social_connection=data.get("социальная_связь", 0.0),
                     trigger=data.get("trigger", "loaded")
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
         return EmotionState()
     
     def _save(self):

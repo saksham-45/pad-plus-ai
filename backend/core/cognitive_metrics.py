@@ -94,8 +94,8 @@ class CognitiveMetricsDashboard:
                     data = json.load(f)
                     self._history = data.get('history', [])
                     self._alerts = data.get('alerts', [])
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
 
     def _save(self):
         """Сохраняет историю в файл"""
@@ -140,8 +140,8 @@ class CognitiveMetricsDashboard:
                 total = stats.get('total_dialogs', 0)
                 metrics["rag_usage"] = min(1.0, total / 10000)
                 metrics["episodic_count"] = total
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
 
         return metrics
 
@@ -206,8 +206,8 @@ class CognitiveMetricsDashboard:
                 else:
                     metrics["mood"] = "neutral"
 
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
 
         return metrics
 
@@ -246,8 +246,8 @@ class CognitiveMetricsDashboard:
                 metrics["completed_today"] = stats.get('completed_today', 0)
                 metrics["activity_level"] = min(1.0, metrics["active_tasks"] / 10)
 
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
 
         return metrics
 
@@ -308,8 +308,8 @@ class CognitiveMetricsDashboard:
                 trends["overall_score"] = health.get('overall_score', 0.8)
                 trends["trends"] = health.get('trends', {})
                 trends["issues"] = health.get('active_issues', 0)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
 
         return trends
 

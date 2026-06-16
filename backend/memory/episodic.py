@@ -715,6 +715,22 @@ class EpisodicMemory:
             ]
         }
     
+    async def update(self, id: str, data: Dict[str, Any]) -> bool:
+        """Обновляет эпизод по ID"""
+        episode = self.get_episode(id)
+        if not episode:
+            return False
+        for key, value in data.items():
+            if hasattr(episode, key):
+                setattr(episode, key, value)
+        self._save_episode(episode)
+        return True
+
+    async def get(self, id: str) -> Optional[Dict[str, Any]]:
+        """Получает эпизод по ID"""
+        episode = self.get_episode(id)
+        return episode.to_dict() if episode else None
+
     def clear(self):
         """Очищает эпизодическую память"""
         conn = sqlite3.connect(self.db_path)

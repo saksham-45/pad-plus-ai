@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.phases.reflection")
 
 
 class ReflectionPhase(PipelinePhase):
@@ -14,19 +18,16 @@ class ReflectionPhase(PipelinePhase):
             reflection = get_reflection_loop()
             state_manager = get_system_state_manager()
             state_manager.update(ctx.context.get("result_dict", {}))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"{__name__} error: {e}")
 
-        try:
-            from core.meta_controller import get_meta_controller, CognitiveState
-            meta = get_meta_controller()
-            meta.adapt({
-                "success": ctx.context.get("pipeline_success", False),
-                "strategy": ctx.context.get("strategy", "simple"),
-                "response_time": ctx.context.get("execution_time_ms", 0) / 1000,
-            })
-            meta.set_state(CognitiveState.IDLE)
-        except Exception:
-            pass
+        # MetaController temporarily disabled — module not yet implemented
+        # try:
+        #     from core.meta_controller import get_meta_controller, CognitiveState
+        #     meta = get_meta_controller()
+        #     meta.adapt({...})
+        #     meta.set_state(CognitiveState.IDLE)
+        # except Exception as e:
+        #     logger.warning(f"{__name__} error: {e}")
 
         return PhaseResult(success=True)

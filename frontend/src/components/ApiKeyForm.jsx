@@ -40,12 +40,18 @@ export function ApiKeyForm({ provider, onSuccess, onCancel }) {
       } else {
         // Fallback на статические модели
         const fallback = fallbackModelSuggestions[providerId] || [];
-        setAvailableModels(fallback.map(m => ({ id: `${providerId}/${m}`, name: m })));
+        setAvailableModels(fallback.map(m => ({ 
+          id: m.includes('/') ? m : `${providerId}/${m}`, 
+          name: m 
+        })));
       }
     } catch (error) {
       console.error('Failed to load models:', error);
       const fallback = fallbackModelSuggestions[providerId] || [];
-      setAvailableModels(fallback.map(m => ({ id: `${providerId}/${m}`, name: m })));
+      setAvailableModels(fallback.map(m => ({ 
+        id: m.includes('/') ? m : `${providerId}/${m}`, 
+        name: m 
+      })));
     } finally {
       setModelsLoading(false);
     }

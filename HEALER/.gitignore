@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+*.healer.bak
+data/trace_store/traces/*.json
+data/trace_store/spans/
+data/trace_store/index.json
+healer/viewer/data/trace_store/
+.DS_Store
+thumbs.db

@@ -249,8 +249,8 @@ class DreamSystem:
             if cleanup.get("duplicates", {}).get("found", 0) > 10:
                 hygiene.cleanup()
                 insights.append("Очистка памяти выполнена")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"{__name__} error: {e}")
         
         duration = (datetime.now() - start_time).total_seconds()
         
@@ -298,8 +298,8 @@ class DreamSystem:
                             weight=len(common_tags) * 0.3
                         )
                         connections_made += 1
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"{__name__} error: {e}")
                     
                     # Добавляем в related_concepts
                     concept1.related_concepts.append(concept2.id)
@@ -332,8 +332,8 @@ class DreamSystem:
                     action="Интеграция во время сна",
                     confidence=0.7
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"{__name__} error: {e}")
         
         duration = (datetime.now() - start_time).total_seconds()
         

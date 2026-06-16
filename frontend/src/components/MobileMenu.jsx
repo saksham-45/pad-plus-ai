@@ -8,6 +8,7 @@ const tabs = [
   { id: 'documents', label: 'Документы', icon: '📄' },
   { id: 'history', label: 'История', icon: '📜' },
   { id: 'xray', label: 'X-Ray', icon: '🔬' },
+  { id: 'healer', label: 'HEALER', icon: '🧬' },
   { id: 'settings', label: 'Настройки', icon: '⚙️' },
   { id: 'instructions', label: 'Инструкции', icon: '📖' },
   { id: 'providers', label: 'Провайдеры', icon: '⚡' },
@@ -52,7 +53,7 @@ export default function MobileMenu({ isOpen, onClose, activeTab, onTabChange }) 
         <div className="p-4 border-b border-[#1F2937] flex items-center justify-between">
           <h1 className="text-lg font-semibold text-white">
             PAD+ AI
-            <span className="text-xs text-text-secondary ml-2">v3.5</span>
+            <span className="text-xs text-text-secondary ml-2">v4.0</span>
           </h1>
           <button
             onClick={onClose}

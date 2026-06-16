@@ -3,6 +3,33 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Button } from '../components/ui/Button';
 import { apiFetch } from '../services/api';
 
+const labels = {
+  total_episodes: 'Всего эпизодов',
+  total_relations: 'Связей',
+  avg_significance: 'Ср. значимость',
+  topics: 'Темы',
+  total_knowledge: 'Всего знаний',
+  concepts: 'Концепции',
+  procedures: 'Процедуры',
+  avg_confidence: 'Уверенность',
+  total_principles: 'Всего принципов',
+  by_category: 'По категориям',
+  immutable_count: 'Неизменяемых',
+  preview: 'Превью',
+  total_dialogs: 'Всего диалогов',
+  traits: 'Черты',
+  users_known: 'Пользователей',
+  total_interactions: 'Взаимодействий',
+  total_decisions: 'Всего решений',
+  total_success: 'Успешных',
+  overall_success_rate: 'Успешность',
+  strategies_count: 'Стратегий',
+  total_feedback: 'Всего отзывов',
+  positive: 'Положительных',
+  negative: 'Отрицательных',
+  satisfaction_rate: 'Удовлетворённость',
+};
+
 const sections = [
   { key: 'episodic', icon: '📝', label: 'Эпизодическая память', color: 'text-blue-400' },
   { key: 'semantic', icon: '🧠', label: 'Семантическая память', color: 'text-purple-400' },
@@ -94,14 +121,29 @@ export default function MemoryPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-1">
-                    {entries.map(([k, v]) => (
-                      <div key={k} className="flex items-center justify-between text-sm">
-                        <span className="text-gray-400">{k}</span>
-                        <span className="font-medium">
-                          {typeof v === 'number' ? v : typeof v === 'string' && v.length > 100 ? v.slice(0, 100) + '...' : String(v)}
-                        </span>
-                      </div>
-                    ))}
+                    {entries.map(([k, v]) => {
+                      let display;
+                      if (typeof v === 'number') {
+                        display = v.toLocaleString();
+                      } else if (typeof v === 'string') {
+                        display = v.length > 150 ? v.slice(0, 150) + '...' : v;
+                      } else if (Array.isArray(v)) {
+                        const joined = v.join(', ');
+                        display = joined.length > 150 ? joined.slice(0, 150) + '...' : (joined || '[]');
+                      } else if (typeof v === 'object' && v !== null) {
+                        display = JSON.stringify(v).slice(0, 150);
+                      } else {
+                        display = String(v);
+                      }
+                      return (
+                        <div key={k} className="flex items-center justify-between text-sm">
+                          <span className="text-gray-400">{labels[k] || k}</span>
+                          <span className="font-medium text-right ml-2 max-w-[60%] truncate" title={typeof v === 'string' ? v : JSON.stringify(v)}>
+                            {display}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>

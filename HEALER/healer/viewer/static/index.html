@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HEALER Viewer</title>
+<style>
+:root { --bg: #0d1117; --bg-card: #161b22; --bg-hover: #1c2333; --border: #30363d; --text: #c9d1d9; --text-dim: #8b949e; --green: #3fb950; --yellow: #d29922; --red: #f85149; --purple: #a371f7; --blue: #58a6ff; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+.header { background: var(--bg-card); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 100; }
+.header h1 { font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.header h1 span { color: var(--purple); }
+.header .subtitle { color: var(--text-dim); font-size: 12px; }
+.header .status { margin-left: auto; font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 8px; }
+.header .status .dot { width: 8px; height: 8px; border-radius: 50%; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px 24px; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+.tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-dim); font-size: 13px; transition: 0.2s; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.card .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 4px; }
+.card .value { font-size: 28px; font-weight: 700; }
+.card .value.green { color: var(--green); }
+.card .value.yellow { color: var(--yellow); }
+.card .value.red { color: var(--red); }
+.card .value.purple { color: var(--purple); }
+.card .value.blue { color: var(--blue); }
+.btn { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); cursor: pointer; font-size: 13px; transition: 0.15s; }
+.btn:hover { border-color: var(--blue); color: var(--blue); }
+.btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+.btn-primary:hover { background: #4a9eff; }
+.btn-danger { background: rgba(248,81,73,0.2); border-color: var(--red); color: var(--red); }
+.btn-danger:hover { background: rgba(248,81,73,0.3); }
+.severity-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 12px 0; }
+.severity-bar .seg { transition: width 0.5s; }
+.seg-critical { background: #ff4444; }
+.seg-error { background: var(--red); }
+.seg-warning { background: var(--yellow); }
+.seg-info { background: var(--blue); }
+.severity-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.severity-critical { background: rgba(255,68,68,0.15); color: #ff4444; }
+.severity-error { background: rgba(248,81,73,0.15); color: var(--red); }
+.severity-warning { background: rgba(210,153,34,0.15); color: var(--yellow); }
+.severity-info { background: rgba(88,166,255,0.15); color: var(--blue); }
+.report-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.report-table th { text-align: left; padding: 8px 12px; border-bottom: 2px solid var(--border); color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+.report-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.report-table tr:hover td { background: var(--bg-hover); }
+.msg-cell { max-width: 400px; }
+.rec-cell { max-width: 250px; color: var(--blue); font-size: 12px; }
+.detector-badge { padding: 1px 6px; border-radius: 4px; background: var(--bg-hover); font-size: 11px; color: var(--text-dim); }
+.trace-list { display: grid; gap: 6px; }
+.trace-item { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.15s; }
+.trace-item:hover { border-color: var(--blue); }
+.trace-item .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.trace-item .dot.ok { background: var(--green); }
+.trace-item .dot.error { background: var(--red); }
+.trace-item .dot.active { background: var(--yellow); }
+.trace-item .name { font-weight: 600; flex: 1; }
+.trace-item .meta { color: var(--text-dim); font-size: 12px; }
+.trace-detail { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 12px; }
+.key-val { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 12px; }
+.key-val dt { color: var(--text-dim); font-size: 12px; }
+.key-val dd { font-weight: 500; }
+.span-tree { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+.span-node { padding: 4px 0 4px 20px; border-left: 1px solid var(--border); margin-left: 8px; }
+.span-leaf { display: flex; gap: 8px; align-items: center; }
+.span-leaf .s-name { font-weight: 500; }
+.span-leaf .s-status { font-size: 11px; padding: 1px 6px; border-radius: 4px; }
+.span-leaf .s-status.ok { background: rgba(63,185,80,0.15); color: var(--green); }
+.span-leaf .s-status.error { background: rgba(248,81,73,0.15); color: var(--red); }
+.span-leaf .s-duration { color: var(--yellow); font-size: 11px; }
+.empty-state { text-align: center; padding: 40px; color: var(--text-dim); }
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+.controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.controls .hint { color: var(--text-dim); font-size: 12px; margin-left: auto; }
+.diag-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.diag-panel .status-badge { font-size: 13px; padding: 6px 12px; border-radius: 6px; display: inline-block; margin-bottom: 8px; }
+.diag-panel .status-badge.idle { background: rgba(139,148,158,0.15); color: var(--text-dim); }
+.diag-panel .status-badge.running { background: rgba(88,166,255,0.15); color: var(--blue); }
+.diag-panel .status-badge.done { background: rgba(63,185,80,0.15); color: var(--green); }
+.diag-panel .status-badge.error { background: rgba(248,81,73,0.15); color: var(--red); }
+.live-feed { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; margin-top: 12px; padding: 8px 12px; max-height: 400px; overflow-y: auto; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.6; display: none; }
+.live-feed:not(:empty) { display: block; }
+.live-feed .ev-row { padding: 2px 0; border-bottom: 1px solid var(--border); display: flex; gap: 8px; }
+.live-feed .ev-row:last-child { border-bottom: none; }
+.live-feed .ev-time { color: var(--text-dim); white-space: nowrap; flex-shrink: 0; font-size: 11px; }
+.live-feed .ev-text { flex: 1; }
+.live-feed .ev-loc { color: var(--text-dim); font-size: 11px; }
+.live-feed .ev-sev { font-size: 10px; padding: 1px 4px; border-radius: 3px; }
+.live-feed .sev-critical { color: #ff4444; }
+.live-feed .sev-error { color: var(--red); }
+.live-feed .sev-warning { color: var(--yellow); }
+.live-feed .sev-info { color: var(--blue); }
+.sev-badge { display: inline-block; padding: 0 4px; border-radius: 3px; font-size: 10px; }
+.sev-badge.sev-critical { background: rgba(255,68,68,0.15); color: #ff4444; }
+.sev-badge.sev-error { background: rgba(248,81,73,0.15); color: var(--red); }
+.sev-badge.sev-warning { background: rgba(210,153,34,0.15); color: var(--yellow); }
+.sev-badge.sev-info { background: rgba(88,166,255,0.15); color: var(--blue); }
+.toast { position: fixed; bottom: 24px; right: 24px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; display: none; font-size: 13px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); z-index: 200; }
+.toast.show { display: block; animation: slideIn 0.3s; }
+@keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>🧬</span> HEALER Viewer</h1>
+  <span class="subtitle">Наблюдение + самодиагностика</span>
+  <div class="status">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">—</span>
+  </div>
+</div>
+
+<div class="container">
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('overview')">Обзор</div>
+    <div class="tab" onclick="switchTab('healer-traces')">Трейсы HEALER</div>
+    <div class="tab" onclick="switchTab('viewer-traces')">Мои трейсы</div>
+    <div class="tab" onclick="switchTab('self-diag')">Самодиагностика</div>
+  </div>
+
+  <div id="tab-overview" class="tab-content active">
+    <div class="cards" id="statsCards">
+      <div class="card"><div class="label">HEALER трейсов</div><div class="value blue" id="hTraces">—</div></div>
+      <div class="card"><div class="label">Моих трейсов</div><div class="value purple" id="vTraces">—</div></div>
+      <div class="card"><div class="label">Диагностика</div><div class="value" id="diagCount"><span style="font-size:14px">не запущена</span></div><div class="sub" id="diagSub"></div></div>
+      <div class="card"><div class="label">X-RAY</div><div class="value green" id="xrayStatus">✅</div><div class="sub">ядро работает</div></div>
+    </div>
+
+    <div class="diag-panel">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div><span class="status-badge idle" id="diagBadge">○ Ожидание</span></div>
+        <button class="btn btn-primary" onclick="invokeHealer()" id="diagBtn">🔍 Запустить HEALER диагностику</button>
+        <button class="btn" onclick="invokeHealerSelf()" id="diagSelfBtn">🔄 Диагностировать меня</button>
+        <span class="hint" id="diagTargetHint">HEALER</span>
+      </div>
+      <div class="severity-bar" id="diagBar" style="display:none"></div>
+      <div id="diagSummary" style="margin-top:8px"></div>
+      <div class="live-feed" id="diagFeed"></div>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:600;margin-bottom:8px">Последние отчёты HEALER</div>
+      <table class="report-table">
+        <thead><tr><th>Важность</th><th>Детектор</th><th>Сообщение</th><th>Рекомендация</th><th></th></tr></thead>
+        <tbody id="recentReports"></tbody>
+      </table>
+      <div class="empty-state" id="recentEmpty"><div class="icon">🔍</div><div>Запусти диагностику чтобы увидеть отчёты</div></div>
+    </div>
+  </div>
+
+  <div id="tab-healer-traces" class="tab-content">
+    <div class="trace-list" id="healerTraceList"></div>
+    <div id="healerTraceDetail"></div>
+  </div>
+
+  <div id="tab-viewer-traces" class="tab-content">
+    <div class="trace-list" id="viewerTraceList"></div>
+    <div id="viewerTraceDetail"></div>
+  </div>
+
+  <div id="tab-self-diag" class="tab-content">
+    <div class="controls">
+      <button class="btn btn-danger" onclick="invokeHealerSelf()" id="selfDiagBtn">🔄 Диагностировать Viewer</button>
+      <span id="selfDiagStatus" class="hint"></span>
+    </div>
+    <div class="live-feed" id="selfDiagFeed"></div>
+    <div id="selfDiagResults"></div>
+    <div class="empty-state" id="selfDiagEmpty"><div class="icon">🩺</div><div>Запусти самодиагностику — HEALER проверит код viewer на проблемы</div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+let HEALER_TRACE_PATH = '';
+
+function $(id) { return document.getElementById(id); }
+
+function showToast(msg, type='info') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.borderLeft = type === 'error' ? '3px solid var(--red)' : type === 'warn' ? '3px solid var(--yellow)' : '3px solid var(--blue)';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 12000);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  $(`tab-${name}`).classList.add('active');
+  if (name === 'overview') refreshAll();
+  if (name === 'healer-traces') loadHealerTraces();
+  if (name === 'viewer-traces') loadViewerTraces();
+  if (name === 'self-diag') loadSelfDiag();
+}
+
+async function api(path) {
+  const res = await fetch(`${API}${path}`);
+  if (!res.ok) throw new Error(`${res.status}`);
+  return res.json();
+}
+
+async function refreshAll() {
+  try {
+    const [status, hTraces, vTraces, diag] = await Promise.all([
+      api('/api/status'), api('/api/traces'), api('/api/server-traces'), api('/api/healer-result')
+    ]);
+    HEALER_TRACE_PATH = (status.healer_path || '') + '/data/trace_store';
+    $('statusDot').style.background = 'var(--green)';
+    $('statusText').textContent = `HEALER: ${status.healer_available ? 'доступен' : 'не найден'} · X-RAY: ${status.xray ? '✅' : '❌'}`;
+    $('hTraces').textContent = hTraces.count ?? '—';
+    $('vTraces').textContent = vTraces.count ?? '—';
+    $('xrayStatus').textContent = status.xray ? '✅' : '❌';
+    const reports = diag.reports || [];
+    $('diagCount').innerHTML = reports.length ? `<span style="color:var(--yellow)">${reports.length} проблем</span>` : '<span style="font-size:14px;color:var(--text-dim)">не запущена</span>';
+    renderDiagSummary(reports);
+    renderRecentReports(reports);
+  } catch (e) {
+    $('statusDot').style.background = 'var(--red)';
+    $('statusText').textContent = `Ошибка: ${e.message}`;
+  }
+}
+
+function renderDiagSummary(reports) {
+  if (!reports.length) {
+    $('diagBar').style.display = 'none';
+    $('diagSummary').innerHTML = '<span style="color:var(--text-dim)">HEALER ещё не запускался</span>';
+    return;
+  }
+  const bySev = {critical:0, error:0, warning:0, info:0};
+  reports.forEach(r => bySev[r.severity] = (bySev[r.severity]||0) + 1);
+  const total = bySev.critical + bySev.error + bySev.warning + bySev.info;
+  const bar = $('diagBar');
+  bar.style.display = 'flex';
+  bar.innerHTML = '';
+  const parts = [
+    {k:'critical',c:'#ff4444'},{k:'error',c:'#f85149'},{k:'warning',c:'#d29922'},{k:'info',c:'#58a6ff'}
+  ];
+  parts.forEach(p => {
+    const cnt = bySev[p.k] || 0;
+    if (!cnt) return;
+    const seg = document.createElement('div');
+    seg.className = `seg seg-${p.k}`;
+    seg.style.width = `${(cnt/total)*100}%`;
+    seg.title = `${p.k}: ${cnt}`;
+    bar.appendChild(seg);
+  });
+  $('diagSummary').innerHTML = parts.filter(p => bySev[p.k]).map(p =>
+    `<span style="color:${p.c};font-size:12px;margin-right:12px">■ ${p.k}: ${bySev[p.k]}</span>`
+  ).join('');
+}
+
+function renderRecentReports(reports) {
+  const tbody = $('recentReports');
+  tbody.innerHTML = '';
+  if (!reports.length) {
+    $('recentEmpty').style.display = 'block';
+    return;
+  }
+  $('recentEmpty').style.display = 'none';
+  reports.slice(0, 10).forEach(r => {
+    const sev = r.severity || 'info';
+    tbody.innerHTML += `<tr>
+      <td><span class="severity-badge severity-${sev}">${sev}</span></td>
+      <td><span class="detector-badge">${r.detector||''}</span></td>
+      <td class="msg-cell">${esc(r.message||'')}</td>
+      <td class="rec-cell">${esc(r.recommendation||'')}</td>
+      <td><button class="btn" style="font-size:11px;padding:2px 8px" onclick="quickPatch('${r.detector||''}','${esc(r.message||'')}','${esc(r.location||'')}')" title="Сгенерировать патч">П</button></td>
+    </tr>`;
+  });
+}
+
+async function startLiveFeed(taskId, containerId, badgeId, onDone) {
+  const msgs = await loadMessages();
+  const container = $(containerId);
+  const badge = $(badgeId);
+  let since = 0;
+  const poll = async () => {
+    for (let i = 0; i < 600; i++) {
+      try {
+        const res = await fetch(`/api/diagnostics/events/${taskId}?since=${since}`);
+        if (!res.ok) { onDone?.(null, 'Feed lost'); return; }
+        const data = await res.json();
+        for (const ev of data.events) {
+          const html = renderEvent(ev, msgs);
+          container.insertAdjacentHTML('beforeend', html);
+          container.scrollTop = container.scrollHeight;
+          since = data.since;
+        }
+        if (data.done) {
+          if (data.task_status === 'done') {
+            const fres = await fetch(`/api/healer-result`);
+            const fresData = await fres.json();
+            const total = fresData.report_count || 0;
+            if (badge) {
+              badge.className = 'status-badge done';
+              badge.textContent = `✅ Готово: ${total} отчётов`;
+            }
+            onDone?.(fresData, null);
+          } else {
+            if (badge) { badge.className = 'status-badge error'; badge.textContent = '❌ Ошибка'; }
+            onDone?.(null, 'Task failed');
+          }
+          return;
+        }
+      } catch (e) {
+        if (badge) { badge.className = 'status-badge error'; badge.textContent = `❌ ${e.message}`; }
+        onDone?.(null, e.message);
+        return;
+      }
+      await new Promise(r => setTimeout(r, 800));
+    }
+    if (badge) { badge.className = 'status-badge error'; badge.textContent = '❌ Таймаут'; }
+    onDone?.(null, 'Timeout');
+  };
+  poll();
+}
+
+async function invokeHealer() {
+  const btn = $('diagBtn');
+  btn.disabled = true; btn.textContent = '⏳ Запуск...';
+  const badge = $('diagBadge');
+  const feed = $('diagFeed');
+  feed.innerHTML = '';
+  badge.className = 'status-badge running'; badge.textContent = '● Выполняется';
+  try {
+    const res = await fetch(`/api/invoke-healer?target=${encodeURIComponent(HEALER_TRACE_PATH)}`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to start');
+    startLiveFeed(data.task_id, 'diagFeed', 'diagBadge', (result, err) => {
+      btn.disabled = false; btn.textContent = '🔍 Запустить HEALER диагностику';
+      if (err) { showToast(err, 'error'); } else { showToast(`HEALER: ${result.report_count} проблем найдено`); refreshAll(); }
+    });
+  } catch (e) {
+    badge.className = 'status-badge error'; badge.textContent = `❌ ${e.message}`;
+    showToast(e.message, 'error');
+    btn.disabled = false; btn.textContent = '🔍 Запустить HEALER диагностику';
+  }
+}
+
+async function invokeHealerSelf() {
+  const btn = $('selfDiagBtn') || $('diagSelfBtn');
+  btn.disabled = true; btn.textContent = '⏳ Диагностика...';
+  const statusDiv = $('selfDiagStatus');
+  const feed = $('selfDiagFeed');
+  feed.innerHTML = '';
+  statusDiv.textContent = '⏳ HEALER проверяет viewer...';
+  $('selfDiagEmpty').style.display = 'none';
+  try {
+    const res = await fetch(`/api/invoke-healer?target=`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to start');
+    startLiveFeed(data.task_id, 'selfDiagFeed', null, (result, err) => {
+      btn.disabled = false; btn.textContent = '🔄 Диагностировать Viewer';
+      if (err) { showToast(err, 'error'); statusDiv.textContent = `❌ ${err}`; }
+      else { showToast(`Самодиагностика: ${result.report_count} проблем в viewer`); loadSelfDiag(); }
+    });
+  } catch (e) {
+    showToast(e.message, 'error');
+    statusDiv.textContent = `❌ ${e.message}`;
+    btn.disabled = false; btn.textContent = '🔄 Диагностировать Viewer';
+  }
+}
+
+function patchSourcePath(location) {
+  if (!location) return 'viewer.py';
+  const m = location.match(/([\w/\\]+\.\w+)/);
+  return m ? m[1] : 'viewer.py';
+}
+
+async function loadSelfDiag() {
+  $('selfDiagEmpty').style.display = 'none';
+  try {
+    const data = await api('/api/healer-result');
+    const reports = data.reports || [];
+    $('selfDiagStatus').textContent = reports.length ? `Найдено ${reports.length} проблем` : 'Чисто ✅';
+    const div = $('selfDiagResults');
+    div.innerHTML = '';
+    if (!reports.length) {
+      div.innerHTML = '<div class="empty-state"><div class="icon">✅</div><div>HEALER не нашёл проблем в viewer</div></div>';
+      return;
+    }
+    reports.forEach(r => {
+      const sev = r.severity || 'info';
+      div.innerHTML += `<div class="card" style="margin-bottom:8px">
+        <div style="display:flex;gap:8px;align-items:flex-start">
+          <span class="severity-badge severity-${sev}">${sev}</span>
+          <span class="detector-badge">${r.detector||''}</span>
+          <div style="flex:1">
+            <div>${esc(r.message||'')}</div>
+            ${r.recommendation ? `<div style="color:var(--blue);font-size:12px;margin-top:4px">→ ${esc(r.recommendation)}</div>` : ''}
+            ${r.location ? `<div style="color:var(--text-dim);font-size:11px;margin-top:2px">📍 ${esc(r.location)}</div>` : ''}
+          </div>
+        </div>
+      </div>`;
+    });
+  } catch (e) {
+    $('selfDiagStatus').textContent = `Ошибка: ${e.message}`;
+  }
+}
+
+async function loadHealerTraces() {
+  try {
+    const data = await api('/api/traces');
+    renderTraceList('healerTraceList', data.traces || [], 'healerTraceDetail');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadViewerTraces() {
+  try {
+    const data = await api('/api/server-traces');
+    renderTraceList('viewerTraceList', data.traces || [], 'viewerTraceDetail');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function renderTraceList(listId, traces, detailId) {
+  const list = $(listId);
+  list.innerHTML = '';
+  if (!traces.length) {
+    list.innerHTML = '<div class="empty-state"><div class="icon">📭</div><div>Нет трейсов</div></div>';
+    return;
+  }
+  traces.forEach(t => {
+    const status = t.ended_at ? (t.status === 'ok' ? 'ok' : 'error') : 'active';
+    const dur = t.duration_ms != null ? `${Math.round(t.duration_ms)}ms` : '—';
+    const item = document.createElement('div');
+    item.className = 'trace-item';
+    item.innerHTML = `
+      <div class="dot ${status}"></div>
+      <div class="name">${esc(t.name)}</div>
+      <div class="meta">${t.span_count} spans · ${dur}</div>
+      <div style="font-size:11px;color:var(--text-dim)">${t.trace_id?.slice(0,12)||''}</div>
+    `;
+    item.onclick = () => showTraceDetail(t.trace_id, detailId);
+    list.appendChild(item);
+  });
+}
+
+async function showTraceDetail(traceId, detailId) {
+  const div = $(detailId);
+  try {
+    const data = await api(`/api/trace/${traceId}`);
+    const started = new Date(data.started_at * 1000).toLocaleString();
+    const dur = data.duration_ms != null ? `${Math.round(data.duration_ms)}ms` : '—';
+    const status = data.ended_at ? data.status : 'active';
+    let spansHtml = '';
+    if (data.tree?.tree) {
+      const roots = Array.isArray(data.tree.tree) ? data.tree.tree : [data.tree.tree];
+      spansHtml = renderSpanTree(roots);
+    }
+    div.innerHTML = `
+      <h3>🧬 ${esc(data.name)}</h3>
+      <div class="key-val">
+        <dt>ID</dt><dd style="font-family:monospace">${data.trace_id}</dd>
+        <dt>Статус</dt><dd><span class="severity-badge severity-${status === 'ok' ? 'info' : 'error'}">${status}</span></dd>
+        <dt>Spans</dt><dd>${data.span_count}</dd>
+        <dt>Длительность</dt><dd>${dur}</dd>
+      </div>
+      <div class="span-tree">${spansHtml || 'Нет спанов'}</div>
+    `;
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch (e) {
+    div.innerHTML = `<div class="card" style="color:var(--red)">Ошибка: ${e.message}</div>`;
+  }
+}
+
+function renderSpanTree(nodes, depth=0) {
+  let html = '';
+  for (const node of (nodes||[])) {
+    const st = node.status || 'ok';
+    const dur = node.duration_ms != null ? ` ${Math.round(node.duration_ms)}ms` : '';
+    const children = node.children || [];
+    html += `<div class="span-node" style="margin-left:${depth*20}px">
+      <div class="span-leaf">
+        <span class="s-name">${esc(node.name||node.span_id)}</span>
+        <span class="s-status ${st}">${st}</span>
+        <span class="s-duration">${dur}</span>
+      </div>
+      ${children.length ? renderSpanTree(children, depth+1) : ''}
+    </div>`;
+  }
+  return html;
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ── Human-readable messages ──
+let MESSAGES = null;
+async function loadMessages() {
+  if (MESSAGES) return MESSAGES;
+  try {
+    const res = await fetch('/messages.json');
+    if (res.ok) MESSAGES = await res.json();
+  } catch (_) { MESSAGES = {}; }
+  return MESSAGES || {};
+}
+
+function fmtMsg(tpl, vars) {
+  return tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] != null ? vars[k] : '?' + k + '?');
+}
+
+function renderEvent(event, msgs) {
+  const names = msgs?.detector_names || {};
+  const icons = msgs?.detector_icons || {};
+  const eventTypes = msgs?.event_types || {};
+  const tpls = msgs?.reports || {};
+  const sevLabels = msgs?.severity_labels || {};
+  const dName = names[event.detector] || event.detector || '';
+  const dIcon = icons[event.detector] || '🔍';
+  const t = event.timestamp ? new Date(event.timestamp * 1000).toLocaleTimeString() : '';
+  const sev = sevLabels[event.severity] || event.severity || '';
+  const sevClass = event.severity || 'info';
+  let line = '';
+
+  switch (event.type) {
+    case 'diagnostics_start':
+      line = fmtMsg(eventTypes.diagnostics_start || '🔍 Запуск диагностики', {});
+      break;
+    case 'detector_start':
+      line = fmtMsg(eventTypes.detector_start || '{icon} {detector_name}: проверка...', {icon: dIcon, detector_name: dName});
+      break;
+    case 'detector_done':
+      if (event.error) {
+        line = fmtMsg(eventTypes.detector_done || '{icon} {detector_name}: {result}', {icon: dIcon, detector_name: dName, result: '❌ ошибка'});
+      } else if (event.reports_count > 0) {
+        line = fmtMsg(eventTypes.detector_done || '{icon} {detector_name}: {result}', {icon: dIcon, detector_name: dName, result: `⚠ найдено ${event.reports_count}`});
+      } else {
+        line = fmtMsg(eventTypes.detector_done || '{icon} {detector_name}: {result}', {icon: dIcon, detector_name: dName, result: '✅ чисто'});
+      }
+      break;
+    case 'detector_found': {
+      const r = event.report || {};
+      const msg = r.message || '';
+      const loc = r.location || '';
+      const dtpls = tpls[event.detector] || {};
+      let human = '';
+      for (const key of Object.keys(dtpls)) {
+        if (msg.includes(key) || msg.includes(key.replace('_', ' '))) {
+          human = fmtMsg(dtpls[key], {name: r.detector, span_id: '', parent_id: '', limit: '10', module: r.detector, duration: '0', threshold: '100', child: '', parent: '', ratio: '0', avg: '0'});
+          break;
+        }
+      }
+      if (!human) human = msg;
+      line = `<span class="sev-${sevClass}">${dIcon}</span> ${dName}: ${esc(human)}`;
+      if (loc) line += ` <span class="ev-loc">📍 ${esc(loc)}</span>`;
+      if (sev) line += ` <span class="ev-sev sev-badge sev-${sevClass}">${sev}</span>`;
+      break;
+    }
+    case 'diagnostics_done':
+      line = fmtMsg(eventTypes.diagnostics_done || '✅ Диагностика завершена', {total_reports: event.total_reports || 0});
+      break;
+    case 'diagnostics_error':
+      line = `❌ Ошибка: ${esc(event.error || '')}`;
+      break;
+    default:
+      line = `${dIcon} ${dName}: ${event.type}`;
+  }
+  return `<div class="ev-row">${t ? `<span class="ev-time">${t}</span>` : ''}<span class="ev-text">${line}</span></div>`;
+}
+
+async function pollTask(taskId, onDone) {
+  const maxAttempts = 300;
+  for (let i = 0; i < maxAttempts; i++) {
+    const res = await fetch(`/api/diagnostics/status/${taskId}`);
+    if (!res.ok) { onDone(null, 'Task lost'); return; }
+    const data = await res.json();
+    if (data.status === 'done') { onDone(data); return; }
+    if (data.status === 'error') { onDone(null, data.error || 'Unknown error'); return; }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  onDone(null, 'Timeout');
+}
+
+// ── Patch buttons ──
+async function quickPatch(detector, message, location) {
+  const sourcePath = patchSourcePath(location);
+  if (!confirm("Применить патч для " + detector + "?\nФайл: " + sourcePath)) return;
+  try {
+    const res = await fetch("/api/patch", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({source_path: sourcePath, detector, message, location}),
+    });
+    const data = await res.json();
+    if (data.success && data.patched_code) {
+      const res2 = await fetch("/api/patch/apply", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({source_path: sourcePath, original_code: data.original_code, patched_code: data.patched_code}),
+      });
+      const r2 = await res2.json();
+      if (r2.success) {
+        showToast("✅ Патч применён: " + data.pattern + ". Перезапусти viewer.", "info");
+      } else {
+        showToast("❌ Ошибка применения: " + r2.error, "error");
+      }
+    } else {
+      showToast("Пропуск: " + (data.error || "нет изменений"), "warn");
+    }
+  } catch (e) {
+    showToast("Ошибка: " + e.message, "error");
+  }
+}
+
+// Init
+refreshAll();
+setInterval(refreshAll, 10000);
+</script>
+</body>
+</html>

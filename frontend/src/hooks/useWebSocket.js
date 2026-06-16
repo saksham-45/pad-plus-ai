@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getAuthToken, getRefreshToken } from '../services/api';
 
+const MAX_MESSAGES = 5;
+
 // Глобальный экземпляр для предотвращения множественных подключений
 let globalWsInstance = null;
 let globalSubscribers = 0;
@@ -33,7 +35,8 @@ export function useWebSocket(url = null) {
 
     const token = getAuthToken();
     const refreshToken = getRefreshToken();
-    const baseWsUrl = url || `ws://localhost:8080/ws`;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const baseWsUrl = url || `${protocol}//${window.location.host}/ws`;
     const wsUrl = new URL(baseWsUrl);
 
     if (token) {
@@ -64,7 +67,7 @@ export function useWebSocket(url = null) {
         if (!isMountedRef.current) return;
         try {
           const data = JSON.parse(event.data);
-          setMessages(prev => [...prev, data]);
+          setMessages(prev => [...prev.slice(-(MAX_MESSAGES - 1)), data]);
         } catch (e) {
           console.error('❌ Ошибка парсинга сообщения:', e);
         }

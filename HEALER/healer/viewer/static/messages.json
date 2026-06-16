@@ -1,0 +1,71 @@
+{
+  "detector_names": {
+    "SpanAnalyzer": "Анализатор span'ов",
+    "SlowImportDetector": "Детектор медленных импортов",
+    "ErrorPathDetector": "Детектор ошибок без обработки",
+    "DeadCodeDetector": "Детектор мёртвого кода",
+    "ResourceLeakDetector": "Детектор утечек ресурсов",
+    "CausalViolationDetector": "Детектор нарушений причинности",
+    "LatencyAnomalyDetector": "Детектор аномалий задержек"
+  },
+  "detector_icons": {
+    "SpanAnalyzer": "🔗",
+    "SlowImportDetector": "🐌",
+    "ErrorPathDetector": "⚠️",
+    "DeadCodeDetector": "💀",
+    "ResourceLeakDetector": "💧",
+    "CausalViolationDetector": "🕸️",
+    "LatencyAnomalyDetector": "⏱️"
+  },
+  "event_types": {
+    "diagnostics_start": "🔍 Запуск диагностики",
+    "detector_start": "{icon} {detector_name}: проверка...",
+    "detector_done": "{icon} {detector_name}: {result}",
+    "detector_found": "{icon} {detector_name}: {summary}",
+    "diagnostics_done": "✅ Диагностика завершена. Найдено проблем: {total_reports}",
+    "diagnostics_error": "❌ Ошибка диагностики: {error}"
+  },
+  "detector_found_summary": "найден {severity} в {location}",
+  "detector_done_ok": "✅ чисто",
+  "detector_done_found": "⚠ найдено {count}",
+  "detector_done_error": "❌ ошибка",
+  "severity_labels": {
+    "critical": "критическая",
+    "error": "ошибка",
+    "warning": "предупреждение",
+    "info": "замечание"
+  },
+  "reports": {
+    "SpanAnalyzer": {
+      "unended_span": "Span '{name}' не был завершён. Это искажает дерево вызовов и может привести к некорректным метрикам.",
+      "duplicate_span_id": "Обнаружен дубликат span_id '{span_id}'. Нарушение целостности данных.",
+      "missing_parent": "Span '{name}' ссылается на несуществующий родительский span '{parent_id}'.",
+      "deep_trace": "Глубина дерева вызовов превышает {limit}. Это замедляет анализ."
+    },
+    "SlowImportDetector": {
+      "slow_import": "Модуль '{module}' загружается {duration:.0f}ms — медленнее порога {threshold:.0f}ms. Это замедляет запуск приложения."
+    },
+    "ErrorPathDetector": {
+      "error_no_fallback": "Функция '{name}' сообщает об ошибке, но не имеет обработчика (try/except или альтернативного пути). Ошибка упадёт на уровень выше.",
+      "error_no_recovery": "Компонент '{name}' завершился ошибкой без восстановления. Система не пытается перезапустить или компенсировать сбой."
+    },
+    "DeadCodeDetector": {
+      "unused_component": "Компонент '{name}' ни разу не вызывался за всё время наблюдения. Возможно, это мёртвый код.",
+      "unused_import": "Импорт '{name}' нигде не используется в проекте."
+    },
+    "ResourceLeakDetector": {
+      "unended_span": "Span '{name}' висит открытым более {duration:.0f}s. Возможна утечка ресурса.",
+      "orphan_span": "Обнаружен потерянный span '{name}' без привязки к trace."
+    },
+    "CausalViolationDetector": {
+      "child_before_parent": "Дочерний span '{child}' начался раньше родительского '{parent}'. Нарушение причинности.",
+      "child_outlives_parent": "Дочерний span '{child}' пережил родительский '{parent}'.",
+      "late_span": "Span '{name}' завершился слишком поздно относительно ожидаемого времени.",
+      "clock_regression": "Обнаружена регрессия времени: span '{name}' имеет отрицательную длительность."
+    },
+    "LatencyAnomalyDetector": {
+      "latency_outlier": "Запрос '{name}' выполняется за {duration:.0f}ms — в {ratio:.1f} раз дольше среднего ({avg:.0f}ms). Возможна проблема с производительностью.",
+      "overall_latency": "Общая задержка в проекте ({avg:.0f}ms) превышает порог ({threshold:.0f}ms)."
+    }
+  }
+}

@@ -13,7 +13,7 @@ API Routes для управления историей диалогов
 - DELETE /api/v1/dialogs - Очистить всю историю
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Header, Query
+from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -24,7 +24,8 @@ import uuid
 
 logger = logging.getLogger("padplus")
 
-from core.supabase_client import get_db_client, get_supabase
+from core.supabase_client import get_db_client
+from core.auth_manager import get_current_user_safe as get_current_user
 
 router = APIRouter(prefix="/api/v1/dialogs", tags=["Dialog History"])
 
@@ -53,57 +54,6 @@ class MessageCreate(BaseModel):
     model: Optional[str] = None
     provider: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
-
-
-class ExportFormat(str):
-    json = "json"
-    txt = "txt"
-
-
-# ============================================================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-# ============================================================================
-
-async def get_current_user(
-    authorization: Optional[str] = Header(None)
-) -> dict:
-    """Получает текущего пользователя из Supabase Auth"""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Требуется аутентификация")
-    
-    token = authorization[7:]
-    
-    supabase = get_supabase()
-    if not supabase:
-        raise HTTPException(status_code=500, detail="БД не подключена")
-    
-    try:
-        user_response = supabase.auth.get_user(token)
-        
-        if not user_response or not user_response.user:
-            raise HTTPException(status_code=401, detail="Неверный токен")
-        
-        user = user_response.user
-        
-        profile_response = supabase.table("users")\
-            .select("*")\
-            .eq("id", user.id)\
-            .execute()
-        
-        profile = profile_response.data[0] if profile_response.data else None
-        
-        return {
-            "auth_user": user,
-            "profile": profile,
-            "id": user.id,
-            "email": user.email,
-            "access_token": token,
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Ошибка аутентификации: {str(e)}")
 
 
 # ============================================================================
@@ -165,8 +115,8 @@ async def list_dialogs(
                 .limit(0)\
                 .execute()
             total = count_result.count if count_result.count else 0
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"{__name__} error: {e}")
     
     has_more = False
     if total > 0:
@@ -216,8 +166,8 @@ async def get_dialog_stats(
             .limit(0)\
             .execute()
         total_dialogs = total_result.count if total_result.count else 0
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"{__name__} error: {e}")
 
     try:
         # Избранные — тоже только count
@@ -228,8 +178,8 @@ async def get_dialog_stats(
             .limit(0)\
             .execute()
         favorite_dialogs = favorite_result.count if favorite_result.count else 0
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"{__name__} error: {e}")
 
     try:
         # Сумма message_count из dialogs (нет тяжелого IN запроса)
@@ -241,8 +191,8 @@ async def get_dialog_stats(
             d.get("message_count", 0) or 0
             for d in (dialogs_result.data or [])
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"{__name__} error: {e}")
 
     try:
         # Активность — последние 7 дней (ограничиваем выборку)
@@ -258,8 +208,8 @@ async def get_dialog_stats(
         for dialog in activity_result.data or []:
             day = dialog["created_at"][:10]
             activity_by_day[day] = activity_by_day.get(day, 0) + 1
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"{__name__} error: {e}")
 
     return {
         "total_dialogs": total_dialogs,

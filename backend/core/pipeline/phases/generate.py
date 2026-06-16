@@ -66,8 +66,9 @@ class GeneratePhase(PipelinePhase):
                     },
                 )
 
-            llm = LLMService(api_key=user_api_key)
-            gen_result = await llm.generate(
+            from runtime.provider_manager import get_provider_manager
+            pm = get_provider_manager()
+            gen_result = await pm.generate(
                 prompt=ctx.user_message,
                 system_prompt=full_context,
                 api_key=user_api_key,
@@ -76,15 +77,16 @@ class GeneratePhase(PipelinePhase):
                 max_tokens=14000,
             )
 
+            response_data = gen_result.response
             return PhaseResult(
                 success=True,
                 data={
-                    "response": gen_result.text,
-                    "provider": gen_result.provider,
-                    "confidence": gen_result.confidence,
-                    "model": gen_result.model,
-                    "raw_llm_response": gen_result.metadata.get("raw_response") if gen_result.metadata else None,
-                    "llm_metadata": gen_result.metadata,
+                    "response": response_data.text,
+                    "provider": response_data.provider,
+                    "confidence": response_data.confidence,
+                    "model": response_data.model,
+                    "raw_llm_response": response_data.metadata.get("raw_response") if response_data.metadata else None,
+                    "llm_metadata": response_data.metadata,
                 },
             )
         except Exception as e:

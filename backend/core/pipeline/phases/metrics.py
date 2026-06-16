@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.metrics")
 
 
 class MetricsPhase(PipelinePhase):
@@ -16,5 +20,6 @@ class MetricsPhase(PipelinePhase):
             if result is not None:
                 self._executor._record_metrics(start_time, result)
             return PhaseResult(success=True)
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в MetricsPhase: %s", e, exc_info=True)
             return PhaseResult(success=True)

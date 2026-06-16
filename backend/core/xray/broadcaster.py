@@ -109,27 +109,8 @@ class XRayBroadcaster:
                 self._stats["errors"] += 1
 
     async def _state_publisher_loop(self):
-        """Фоновый цикл публикации актуального состояния системы"""
-        while True:
-            try:
-                await asyncio.sleep(2)
-                
-                if not self._connections:
-                    continue
-                
-                # Отправляем актуальное состояние системы
-                try:
-                    from core.xray.cognitive_state import get_cognitive_state_manager
-                    cognitive_state = get_cognitive_state_manager()
-                    await self.send_emotion_update(cognitive_state.get_pad_state())
-                except Exception as e:
-                    logger.debug(f"📡 Не удалось отправить состояние PAD: {e}")
-                
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"📡 Ошибка в state publisher loop: {e}")
-                await asyncio.sleep(5)
+        """Фоновый цикл публикации актуального состояния системы (отключён — PAD идёт через pipeline)"""
+        await asyncio.sleep(3600)  # Заглушка: не публикуем автоматически, чтобы не нагружать систему
     
     async def _distribute_message(self, message: BroadcastMessage):
         """Распределяет сообщение подписчикам"""

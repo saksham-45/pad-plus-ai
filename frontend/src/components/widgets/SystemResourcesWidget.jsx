@@ -201,7 +201,7 @@ export function SystemResourcesWidget() {
   
   useEffect(() => {
     fetchResources();
-    const interval = setInterval(fetchResources, 10000);
+    const interval = setInterval(fetchResources, 30000);
     return () => clearInterval(interval);
   }, []);
   

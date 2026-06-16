@@ -452,8 +452,8 @@ class RAGMemory:
     def __del__(self):
         try:
             self.close()
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"{__name__} error: {e}")
 
 
 # Глобальный экземпляр

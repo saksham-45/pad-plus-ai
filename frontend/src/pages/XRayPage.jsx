@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { XRayPipeline } from '../components/xray/XRayPipeline';
 import { ThoughtStream } from '../components/xray/ThoughtStream';
 import { EmotionPanel } from '../components/xray/EmotionPanel';
 import { DecisionLog } from '../components/xray/DecisionLog';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
-import { useWebSocket } from '../hooks/useWebSocket';
 import { apiFetch } from '../services/api';
 
-export function XRayPage() {
+export default function XRayPage() {
   // Состояние пайплайна
   const [activeStage, setActiveStage] = useState(null);
   const [completedStages, setCompletedStages] = useState([]);
@@ -32,14 +31,42 @@ export function XRayPage() {
   // Состояние сессии
   const [sessionId, setSessionId] = useState(null);
 
+  // WebSocket
+  const [connected, setConnected] = useState(false);
+  const wsRef = useRef(null);
+
   useEffect(() => {
     apiFetch('/api/v1/xray/latest').then(r => r.ok && r.json().then(setLatestResult)).catch(() => {});
     apiFetch('/api/v1/xray/stats').then(r => r.ok && r.json().then(setXrayStats)).catch(() => {});
     apiFetch('/api/v1/xray/active').then(r => r.ok && r.json().then(d => setActiveSessions(d.active_sessions || []))).catch(() => {});
   }, []);
 
-  // Используем общий хук WebSocket
-  const { connected, messages, send } = useWebSocket();
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    const xrayProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = new URL(`${xrayProtocol}//${window.location.host}/api/v1/xray/ws`);
+    if (token) wsUrl.searchParams.set('token', token);
+    const ws = new WebSocket(wsUrl.toString());
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setConnected(true);
+      ws.send(JSON.stringify({ type: 'subscribe', channels: ['trace', 'thought', 'pipeline', 'emotion', 'decision', 'all'] }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        handleMessage(msg);
+      } catch (e) {
+        console.warn('X-Ray WS parse error:', e);
+      }
+    };
+
+    ws.onclose = () => setConnected(false);
+
+    return () => { ws.close(); wsRef.current = null; };
+  }, []);
 
   // Обработка сообщений
   const handleMessage = (message) => {
@@ -175,23 +202,7 @@ export function XRayPage() {
     setDecisions(prev => [...prev, { ...data, id: Date.now(), timestamp: new Date() }].slice(-100));
   };
 
-  // Обработка входящих сообщений
-  useEffect(() => {
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      handleMessage(lastMessage);
-    }
-  }, [messages]);
 
-  // Подписка на каналы X-Ray при подключении
-  useEffect(() => {
-    if (connected) {
-      send({
-        type: 'subscribe',
-        channels: ['trace', 'thought', 'pipeline', 'emotion', 'decision', 'all']
-      });
-    }
-  }, [connected, send]);
 
   // Сброс состояния
   const resetPipeline = () => {
@@ -421,4 +432,3 @@ function StatCard({ label, value, total, color = 'blue' }) {
   );
 }
 
-export default XRayPage;

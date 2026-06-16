@@ -38,13 +38,13 @@ async def xray_root():
         get_trace_collector,
         get_thought_visualizer,
         get_xray_broadcaster,
-        get_history_recorder
+        get_xray_history
     )
     
     collector = get_trace_collector()
     visualizer = get_thought_visualizer()
     broadcaster = get_xray_broadcaster()
-    recorder = get_history_recorder()
+    recorder = get_xray_history()
     
     return {
         "name": "X-Ray System",
@@ -62,9 +62,9 @@ async def xray_root():
 @router.get("/sessions")
 async def get_xray_sessions(limit: int = Query(10, le=50)):
     """Список сессий трассировки"""
-    from core.xray import get_history_recorder
+    from core.xray import get_xray_history
     
-    recorder = get_history_recorder()
+    recorder = get_xray_history()
     sessions = recorder.list_sessions(limit=limit)
     
     return {
@@ -76,9 +76,9 @@ async def get_xray_sessions(limit: int = Query(10, le=50)):
 @router.get("/sessions/{session_id}")
 async def get_xray_session(session_id: str):
     """Детали конкретной сессии"""
-    from core.xray import get_history_recorder
+    from core.xray import get_xray_history
     
-    recorder = get_history_recorder()
+    recorder = get_xray_history()
     session = recorder.load_session(session_id)
     
     if not session:
@@ -93,9 +93,9 @@ async def export_xray_session(
     format: str = Query("json", pattern="^(json|csv)$")
 ):
     """Экспорт сессии в JSON или CSV"""
-    from core.xray import get_history_recorder
+    from core.xray import get_xray_history
     
-    recorder = get_history_recorder()
+    recorder = get_xray_history()
     data = recorder.export_session(session_id, format=format)
     
     if not data:
@@ -117,9 +117,9 @@ async def export_xray_session(
 @router.delete("/sessions/{session_id}")
 async def delete_xray_session(session_id: str):
     """Удаление сессии"""
-    from core.xray import get_history_recorder
+    from core.xray import get_xray_history
     
-    recorder = get_history_recorder()
+    recorder = get_xray_history()
     deleted = recorder.delete_session(session_id)
     
     if not deleted:
@@ -135,13 +135,13 @@ async def get_xray_stats():
         get_trace_collector,
         get_thought_visualizer,
         get_xray_broadcaster,
-        get_history_recorder
+        get_xray_history
     )
     
     collector = get_trace_collector()
     visualizer = get_thought_visualizer()
     broadcaster = get_xray_broadcaster()
-    recorder = get_history_recorder()
+    recorder = get_xray_history()
     
     return {
         "trace_collector": collector.get_stats(),
@@ -307,6 +307,7 @@ async def get_pipeline_stages():
 @router.get("/brain/status")
 async def get_brain_status():
     """Статус X-Ray Brain (устаревший - brain удалён)"""
+    from core.xray import get_system_state_manager, get_meta_learner, get_reflection_loop
     state_manager = get_system_state_manager()
     meta = get_meta_learner()
     reflection = get_reflection_loop()

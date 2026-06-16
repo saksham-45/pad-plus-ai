@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.response_guard")
 
 
 class ResponseGuardPhase(PipelinePhase):
@@ -47,5 +51,6 @@ class ResponseGuardPhase(PipelinePhase):
                     "cognition": cognition,
                 },
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в ResponseGuardPhase: %s", e, exc_info=True)
             return PhaseResult(success=True, data={"response": ctx.context.get("response", "")})

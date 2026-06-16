@@ -691,17 +691,25 @@ class RAGMemory:
                 sql_parts.append("AND (user_id = %s OR user_id IS NULL)")
                 params.append(user_id)
             
-            # Поиск по тексту
+            # Поиск по тексту (через ключевые слова, т.к. plainto_tsquery с русским не работает)
             if query.strip():
-                sql_parts.append(
-                    "AND ("
-                    "user_message @@ plainto_tsquery(%s) OR "
-                    "ai_response @@ plainto_tsquery(%s) OR "
-                    "summary @@ plainto_tsquery(%s) OR "
-                    "topic ILIKE %s"
-                    ")"
-                )
-                params.extend([query, query, query, f'%{query}%'])
+                keywords = list(dict.fromkeys(kw for kw in extract_keywords(query) if len(kw) >= 3))
+                if keywords:
+                    like_patterns = [f'%{kw}%' for kw in keywords]
+                    sql_parts.append(
+                        "AND ("
+                        "user_message ILIKE ANY(%s) OR "
+                        "ai_response ILIKE ANY(%s) OR "
+                        "summary ILIKE ANY(%s) OR "
+                        "topic ILIKE ANY(%s)"
+                        ")"
+                    )
+                    params.extend([like_patterns, like_patterns, like_patterns, like_patterns])
+                else:
+                    sql_parts.append(
+                        "AND (user_message ILIKE %s OR ai_response ILIKE %s OR summary ILIKE %s OR topic ILIKE %s)"
+                    )
+                    params.extend([f'%{query}%'] * 4)
             
             # Сортировка по времени и лимит
             sql_parts.append("ORDER BY created_at DESC LIMIT %s")
@@ -751,8 +759,8 @@ class RAGMemory:
                     entities = json.loads(entities_json) if entities_json else []
                     relations_json = meta.get('relations', '[]')
                     relations = json.loads(relations_json) if relations_json else []
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"{__name__} error: {e}")
                 
                 ranked_results.append({
                     "id": doc_id,
@@ -797,13 +805,34 @@ class RAGMemory:
             import psycopg2
             conn = psycopg2.connect(db_url, connect_timeout=3)
             cursor = conn.cursor()
-            cursor.execute(
-                """SELECT user_message, ai_response, metadata, topic, created_at
-                FROM rag_dialogs
-                WHERE (user_message @@ plainto_tsquery(%s) OR ai_response @@ plainto_tsquery(%s) OR topic ILIKE %s)
-                ORDER BY created_at DESC LIMIT 3""",
-                (query, query, f'%{query}%')
-            )
+
+            # user_id фильтр
+            user_filter = ""
+            user_params = []
+            if user_id:
+                user_filter = "AND (user_id = %s OR user_id IS NULL)"
+                user_params = [user_id]
+
+            keywords = list(dict.fromkeys(kw for kw in extract_keywords(query) if len(kw) >= 3))
+            if keywords:
+                like_patterns = [f'%{kw}%' for kw in keywords]
+                cursor.execute(
+                    f"""SELECT user_message, ai_response, metadata, topic, created_at
+                    FROM rag_dialogs
+                    WHERE (user_message ILIKE ANY(%s) OR ai_response ILIKE ANY(%s) OR topic ILIKE ANY(%s))
+                    {user_filter}
+                    ORDER BY created_at DESC LIMIT 3""",
+                    (like_patterns, like_patterns, like_patterns, *user_params)
+                )
+            else:
+                cursor.execute(
+                    f"""SELECT user_message, ai_response, metadata, topic, created_at
+                    FROM rag_dialogs
+                    WHERE (user_message ILIKE %s OR ai_response ILIKE %s OR topic ILIKE %s)
+                    {user_filter}
+                    ORDER BY created_at DESC LIMIT 3""",
+                    (f'%{query}%', f'%{query}%', f'%{query}%', *user_params)
+                )
             rows = cursor.fetchall()
             cursor.close()
             conn.close()
@@ -963,8 +992,8 @@ class RAGMemory:
                             if entity_value not in entity_index:
                                 entity_index[entity_value] = []
                             entity_index[entity_value].append(doc_id)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"{__name__} error: {e}")
             
             return entity_index
             

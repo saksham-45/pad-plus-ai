@@ -26,4 +26,4 @@ RUN mkdir -p data
 EXPOSE 8080
 
 # Команда запуска
-CMD ["python", "start_server.py"]
+CMD ["python", "scripts/start_server.py"]

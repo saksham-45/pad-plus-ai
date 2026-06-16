@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "healer-autofix"
+version = "1.0.0"
+description = "Self-healing module — runtime diagnostics, AST patching, meta-learning. Zero external dependencies."
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "HEALER Team"},
+]
+keywords = ["self-healing", "diagnostics", "ast-patcher", "tracing", "observability"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: System :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://github.com/healer/healer"
+Documentation = "https://github.com/healer/healer#readme"
+
+[project.scripts]
+healer = "healer.diagnostics.runner:main"
+healer-api = "healer.api:main"
+healer-viewer = "healer.viewer.viewer:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "mypy>=1.8", "ruff>=0.3"]
+
+[tool.setuptools.packages.find]
+include = ["healer*", "aethon*"]
+
+[tool.setuptools.package-data]
+"healer.viewer" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

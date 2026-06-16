@@ -1,6 +1,10 @@
+import logging
+
 from ..base import PipelinePhase
 from ..context import PipelineContext
 from ..models import PhaseResult
+
+logger = logging.getLogger("padplus.pipeline.save_episode")
 
 
 class SaveEpisodePhase(PipelinePhase):
@@ -49,7 +53,8 @@ class SaveEpisodePhase(PipelinePhase):
                 success=True,
                 data={"episode_id": episode.id},
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Ошибка в SaveEpisodePhase: %s", e, exc_info=True)
             return PhaseResult(
                 success=True,
                 data={"episode_id": None},

@@ -10,11 +10,12 @@
 
 import logging
 import re
+import asyncio
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from functools import wraps
 
-from fastapi import HTTPException, Header, Request
+from fastapi import HTTPException, Header, Request, Response
 from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("padplus.auth")
@@ -150,6 +151,9 @@ class AuthManager:
 
 # Глобальный экземпляр
 _auth_manager = None
+_refresh_cache: Dict[str, Dict[str, Any]] = {}  # refresh_token_hash -> {user, new_access_token, timestamp}
+_refresh_cache_lock = asyncio.Lock()
+
 
 def get_auth_manager() -> AuthManager:
     """Получает глобальный экземпляр AuthManager"""
@@ -215,9 +219,20 @@ async def get_current_user_safe(
         )
     
     # 4. Валидируем и при необходимости обновляем токен
+    cache_key = refresh_token or access_token[-16:]
     auth_data, new_access_token, error = await auth_manager.validate_and_refresh(
         supabase, access_token, refresh_token
     )
+    
+    if not auth_data:
+        # Проверяем кэш refresh: другой запрос мог уже обновить токен
+        async with _refresh_cache_lock:
+            cached = _refresh_cache.get(cache_key)
+            if cached and (datetime.now() - cached["timestamp"]).seconds < 30:
+                auth_data = cached["user_data"]
+                new_access_token = cached["new_access_token"]
+                error = ""
+                logger.debug(f"♻️ Использован кэш refresh для токена")
     
     if not auth_data:
         # Определяем тип ошибки
@@ -267,6 +282,23 @@ async def get_current_user_safe(
         logger.error(f"Ошибка получения профиля: {e}")
         # Не блокируем запрос, если профиль не найден
         profile = None
+    
+    # Сохраняем результат refresh в кэш для параллельных запросов
+    if new_access_token and cache_key:
+        async with _refresh_cache_lock:
+            _refresh_cache[cache_key] = {
+                "user_data": {"user": user},
+                "new_access_token": new_access_token,
+                "timestamp": datetime.now()
+            }
+            # Ограничиваем размер кэша
+            if len(_refresh_cache) > 100:
+                # Удаляем старые записи
+                now = datetime.now()
+                stale_keys = [k for k, v in _refresh_cache.items() 
+                              if (now - v["timestamp"]).seconds > 60]
+                for k in stale_keys:
+                    del _refresh_cache[k]
     
     # 6. Формируем результат
     access_token_value = new_access_token or access_token

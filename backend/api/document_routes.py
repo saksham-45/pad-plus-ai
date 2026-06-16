@@ -28,46 +28,10 @@ import httpx
 
 logger = logging.getLogger("padplus")
 
-from core.supabase_client import get_supabase, get_db_client
+from core.supabase_client import get_db_client, get_supabase
+from core.auth_manager import get_current_user_safe as get_current_user
 
 router = APIRouter(prefix="/api/v1", tags=["Document Management"])
-
-
-# ============================================================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-# ============================================================================
-
-async def get_current_user(
-    authorization: Optional[str] = Header(None)
-) -> dict:
-    """Получает текущего пользователя из Supabase Auth"""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Требуется аутентификация")
-    
-    token = authorization[7:]
-    
-    supabase = get_supabase()
-    if not supabase:
-        raise HTTPException(status_code=500, detail="БД не подключена")
-    
-    try:
-        user_response = supabase.auth.get_user(token)
-        
-        if not user_response or not user_response.user:
-            raise HTTPException(status_code=401, detail="Неверный токен")
-        
-        user = user_response.user
-        
-        return {
-            "auth_user": user,
-            "id": user.id,
-            "email": user.email
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Ошибка аутентификации: {str(e)}")
 
 
 # ============================================================================
@@ -212,32 +176,49 @@ async def list_documents(
     
     user_id = current_user["id"]
     
-    # Получаем пагинированные документы (без count — отдельным запросом)
-    query = db.table("documents")\
-        .select("*")\
-        .eq("user_id", user_id)
-    
-    if collection_id:
-        query = query.eq("collection_id", collection_id)
-    if status:
-        query = query.eq("status", status)
-    
-    query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
-    
-    result = query.execute()
+    # Пробуем с фильтром is_deleted (колонка может отсутствовать до миграции)
+    try:
+        query = db.table("documents")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .eq("is_deleted", False)
+        
+        if collection_id:
+            query = query.eq("collection_id", collection_id)
+        if status:
+            query = query.eq("status", status)
+        
+        query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
+        result = query.execute()
+    except Exception:
+        # Fallback: колонка is_deleted ещё не создана
+        query = db.table("documents")\
+            .select("*")\
+            .eq("user_id", user_id)
+        
+        if collection_id:
+            query = query.eq("collection_id", collection_id)
+        if status:
+            query = query.eq("status", status)
+        
+        query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
+        result = query.execute()
     
     # Общее количество — только если первая страница
     total = 0
     if offset == 0:
         try:
-            count_result = db.table("documents")\
+            count_query = db.table("documents")\
                 .select("id", count="exact")\
-                .eq("user_id", user_id)\
-                .limit(0)\
-                .execute()
+                .eq("user_id", user_id)
+            try:
+                count_query = count_query.eq("is_deleted", False)
+                count_result = count_query.limit(0).execute()
+            except Exception:
+                count_result = count_query.limit(0).execute()
             total = count_result.count if count_result.count else 0
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"{__name__} error: {e}")
     
     documents = []
     for doc in result.data:
@@ -273,57 +254,66 @@ async def get_document_stats(
     
     user_id = current_user["id"]
     
-    # Общая статистика
-    total_result = None
+    # Вспомогательная функция: запрос с опциональным is_deleted
+    def query_docs(select_col, count=None, extra_eq=None):
+        q = db.table("documents").select(select_col, count=count).eq("user_id", user_id)
+        try:
+            if extra_eq:
+                q = q.eq(*extra_eq)
+            return q.limit(0).execute() if count else q.limit(1000).execute()
+        except Exception:
+            # колонка is_deleted отсутствует — пробуем без неё
+            if extra_eq and extra_eq[0] == 'is_deleted':
+                q = db.table("documents").select(select_col, count=count).eq("user_id", user_id)
+                return q.limit(0).execute() if count else q.limit(1000).execute()
+            raise
+
+    # Общая статистика (только активные)
+    total_documents = 0
     try:
-        total_result = db.table("documents")\
-            .select("id", count="exact")\
-            .eq("user_id", user_id)\
-            .limit(0)\
-            .execute()
-    except Exception:
-        pass
-    
-    total_documents = total_result.count if total_result and total_result.count else 0
-    
-    # Статистика по статусам (один запрос вместо 4x count=exact, с лимитом)
+        r = query_docs("id", count="exact", extra_eq=("is_deleted", False))
+        total_documents = r.count if r.count else 0
+    except Exception as e:
+        logger.warning(f"{__name__} total count error: {e}")
+
+    # Статистика по статусам (только активные)
     status_stats = {"pending": 0, "processing": 0, "completed": 0, "failed": 0}
     try:
-        all_docs = db.table("documents")\
-            .select("status")\
-            .eq("user_id", user_id)\
-            .limit(1000)\
-            .execute()
-        for doc in all_docs.data or []:
+        r = query_docs("status", extra_eq=("is_deleted", False))
+        for doc in r.data or []:
             s = doc.get("status", "pending")
             if s in status_stats:
                 status_stats[s] += 1
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"{__name__} status stats error: {e}")
 
-    # Общий размер (с лимитом)
+    # Общий размер (только активные)
     total_size = 0
     try:
-        size_result = db.table("documents")\
-            .select("file_size")\
-            .eq("user_id", user_id)\
-            .limit(1000)\
-            .execute()
-        total_size = sum(doc.get("file_size", 0) for doc in size_result.data or [])
-    except Exception:
-        pass
+        r = query_docs("file_size", extra_eq=("is_deleted", False))
+        total_size = sum(doc.get("file_size", 0) for doc in r.data or [])
+    except Exception as e:
+        logger.warning(f"{__name__} size error: {e}")
 
-    # Количество коллекций (count=exact with limit=0 — быстро)
+    # Количество коллекций
     total_collections = 0
     try:
-        collections_result = db.table("document_collections")\
+        r = db.table("document_collections")\
             .select("id", count="exact")\
             .eq("user_id", user_id)\
             .limit(0)\
             .execute()
-        total_collections = collections_result.count if collections_result.count else 0
-    except Exception:
-        pass
+        total_collections = r.count if r.count else 0
+    except Exception as e:
+        logger.warning(f"{__name__} collections error: {e}")
+
+    # Количество в корзине
+    trash_count = 0
+    try:
+        r = query_docs("id", count="exact", extra_eq=("is_deleted", True))
+        trash_count = r.count if r.count else 0
+    except Exception as e:
+        logger.warning(f"{__name__} trash count error: {e}")
     
     return {
         "total_documents": total_documents,
@@ -332,6 +322,7 @@ async def get_document_stats(
         "total_size_bytes": total_size,
         "total_size_mb": round(total_size / (1024 * 1024), 2),
         "total_collections": total_collections,
+        "trash_count": trash_count,
     }
 
 
@@ -371,11 +362,133 @@ async def get_document(
 
 
 @router.delete("/documents/{document_id}")
-async def delete_document(
+async def soft_delete_document(
     document_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Удаление документа"""
+    """Мягкое удаление документа — отправляет в корзину"""
+    db = get_db_client(current_user)
+    if not db:
+        raise HTTPException(status_code=500, detail="БД не подключена")
+    
+    user_id = current_user["id"]
+    
+    # Пробуем soft-delete, fallback на hard-delete если колонки нет
+    try:
+        result = db.table("documents")\
+            .update({"is_deleted": True, "deleted_at": "now()"})\
+            .eq("id", document_id)\
+            .eq("user_id", user_id)\
+            .eq("is_deleted", False)\
+            .execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Документ не найден")
+        
+        return {"success": True, "message": "Документ перемещён в корзину"}
+    except Exception:
+        # Fallback: колонка is_deleted ещё не создана — hard-delete
+        storage = get_supabase()
+        
+        doc_result = db.table("documents")\
+            .select("file_path")\
+            .eq("id", document_id)\
+            .eq("user_id", user_id)\
+            .execute()
+        
+        if not doc_result.data:
+            raise HTTPException(status_code=404, detail="Документ не найден")
+        
+        file_path = doc_result.data[0].get("file_path")
+        
+        if file_path and storage:
+            try:
+                storage.storage.from_("documents").remove([file_path])
+            except Exception:
+                pass
+        
+        db.table("documents")\
+            .delete()\
+            .eq("id", document_id)\
+            .eq("user_id", user_id)\
+            .execute()
+        
+        return {"success": True, "message": "Документ удалён"}
+
+
+@router.get("/documents/trash")
+async def list_trash(
+    current_user: dict = Depends(get_current_user)
+):
+    """Список документов в корзине"""
+    db = get_db_client(current_user)
+    if not db:
+        raise HTTPException(status_code=500, detail="БД не подключена")
+    
+    user_id = current_user["id"]
+    
+    try:
+        result = db.table("documents")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .eq("is_deleted", True)\
+            .order("deleted_at", desc=True)\
+            .execute()
+    except Exception:
+        # Колонка is_deleted отсутствует — корзина пуста
+        return {"data": []}
+    
+    documents = []
+    for doc in result.data:
+        documents.append(DocumentResponse(
+            id=doc["id"],
+            title=doc.get("title", doc.get("filename", "Без названия")),
+            filename=doc.get("filename", ""),
+            file_type=doc.get("file_type", ""),
+            file_size=doc.get("file_size", 0),
+            collection_id=doc.get("collection_id"),
+            status=doc.get("status", "pending"),
+            created_at=doc["created_at"],
+            updated_at=doc["updated_at"],
+        ))
+    
+    return {"data": documents}
+
+
+@router.post("/documents/{document_id}/restore")
+async def restore_document(
+    document_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Восстановление документа из корзины"""
+    db = get_db_client(current_user)
+    if not db:
+        raise HTTPException(status_code=500, detail="БД не подключена")
+    
+    user_id = current_user["id"]
+    
+    try:
+        result = db.table("documents")\
+            .update({"is_deleted": False, "deleted_at": None})\
+            .eq("id", document_id)\
+            .eq("user_id", user_id)\
+            .eq("is_deleted", True)\
+            .execute()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Корзина не поддерживается — накатите миграцию")
+    
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Документ не найден в корзине")
+    
+    return {"success": True, "message": "Документ восстановлен"}
+
+
+@router.delete("/documents/trash/clear")
+async def clear_trash(
+    current_user: dict = Depends(get_current_user),
+    document_id: Optional[str] = Query(None, description="Удалить конкретный документ из корзины навсегда"),
+):
+    """Очистка корзины — безвозвратное удаление файлов из Storage и БД"""
     db = get_db_client(current_user)
     storage = get_supabase()
     if not db or not storage:
@@ -383,30 +496,52 @@ async def delete_document(
     
     user_id = current_user["id"]
     
-    # Получаем документ для удаления файла
-    doc_result = db.table("documents")\
-        .select("file_path")\
-        .eq("id", document_id)\
-        .eq("user_id", user_id)\
-        .execute()
+    # Выбираем документы для удаления
+    try:
+        query = db.table("documents")\
+            .select("id, file_path")\
+            .eq("user_id", user_id)\
+            .eq("is_deleted", True)
+        
+        if document_id:
+            query = query.eq("id", document_id)
+        
+        result = query.execute()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Корзина не поддерживается — накатите миграцию")
     
-    if not doc_result.data:
-        raise HTTPException(status_code=404, detail="Документ не найден")
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Нет документов для удаления")
     
-    file_path = doc_result.data[0].get("file_path")
+    # Удаляем файлы из Storage
+    file_paths = [d["file_path"] for d in result.data if d.get("file_path")]
+    if file_paths:
+        try:
+            storage.storage.from_("documents").remove(file_paths)
+        except Exception as e:
+            logger.warning(f"Ошибка удаления файлов из Storage: {e}")
     
-    # Удаляем файл из хранилища
-    if file_path:
-        storage.storage.from_("documents").remove([file_path])
+    # Удаляем записи из БД
+    try:
+        delete_query = db.table("documents")\
+            .delete()\
+            .eq("user_id", user_id)\
+            .eq("is_deleted", True)
+        
+        if document_id:
+            delete_query = delete_query.eq("id", document_id)
+        
+        delete_query.execute()
+    except Exception:
+        delete_query = db.table("documents")\
+            .delete()\
+            .eq("user_id", user_id)
+        if document_id:
+            delete_query = delete_query.eq("id", document_id)
+        delete_query.execute()
     
-    # Удаляем запись из БД
-    db.table("documents")\
-        .delete()\
-        .eq("id", document_id)\
-        .eq("user_id", user_id)\
-        .execute()
-    
-    return {"success": True, "message": "Документ удалён"}
+    count = len(result.data)
+    return {"success": True, "message": f"Удалено навсегда: {count}"}
 
 
 @router.patch("/documents/{document_id}")
@@ -473,11 +608,12 @@ async def list_collections(
             dc = db.table("documents")\
                 .select("id", count="exact")\
                 .eq("collection_id", coll["id"])\
+                .eq("is_deleted", False)\
                 .limit(0)\
                 .execute()
             doc_count = dc.count if dc.count else 0
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"{__name__} error: {e}")
         
         collections.append(CollectionResponse(
             id=coll["id"],

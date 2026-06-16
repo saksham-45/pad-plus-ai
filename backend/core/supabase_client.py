@@ -209,7 +209,7 @@ def check_database_connection() -> bool:
         try:
             supabase.table("users").select("count").limit(1).execute()
         except Exception:
-            pass  # Таблица может не существовать
+            logger.debug("Таблица users не существует при проверке подключения")
         
         logger.info("✅ Подключение к БД работает")
         return True

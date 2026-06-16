@@ -12,7 +12,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, asdict
 from collections import defaultdict, deque
 
@@ -66,13 +66,15 @@ class MonitoringSystem:
     def __init__(self):
         self.config = get_config()
         self.cache_manager = get_cache_manager()
-        self.metrics_history: deque = deque(maxlen=1000)  # Последние 1000 метрик
+        self.metrics_history: deque = deque(maxlen=1000)
         self.alerts: List[Alert] = []
         self.alert_rules = self._load_alert_rules()
         self.performance_stats = defaultdict(list)
         self.error_counts = defaultdict(int)
         self.start_time = datetime.now()
         self.monitoring_task: Optional[asyncio.Task] = None
+        self._connections_getter: Optional[Callable[[], int]] = None
+        self._queue_size_getter: Optional[Callable[[], int]] = None
         
         # Пороги для алертов
         self.thresholds = {
@@ -169,7 +171,7 @@ class MonitoringSystem:
             cache_stats = self.cache_manager.get_stats()
             response_time_avg = self._calculate_avg_response_time()
             error_rate = self._calculate_error_rate()
-            active_connections = len(self._get_active_connections())
+            active_connections = self._get_active_connections()
             queue_size = self._get_queue_size()
             
             # Создаем метрики
@@ -193,12 +195,21 @@ class MonitoringSystem:
         except Exception as e:
             logger.error(f"Ошибка сбора метрик: {e}")
     
+    def set_connections_getter(self, getter: Callable[[], int]) -> None:
+        """Регистрирует функцию получения активных соединений"""
+        self._connections_getter = getter
+
+    def set_queue_size_getter(self, getter: Callable[[], int]) -> None:
+        """Регистрирует функцию получения размера очереди"""
+        self._queue_size_getter = getter
+
     def _calculate_avg_response_time(self) -> float:
-        """Рассчитывает среднее время ответа"""
-        # Здесь можно интегрировать с вашей системой логирования запросов
-        # Пока возвращаем заглушку
-        return 0.5
-    
+        """Рассчитывает среднее время ответа по реальным данным"""
+        response_times = self.performance_stats.get("response_times", [])
+        if response_times:
+            return sum(response_times) / len(response_times)
+        return 0.0
+
     def _calculate_error_rate(self) -> float:
         """Рассчитывает rate ошибок"""
         total_requests = sum(self.error_counts.values()) + sum(
@@ -208,17 +219,17 @@ class MonitoringSystem:
             return 0.0
         error_count = sum(self.error_counts.values())
         return error_count / total_requests
-    
-    def _get_active_connections(self) -> List:
-        """Получает активные соединения"""
-        # Здесь можно интегрировать с вашим WebSocket менеджером
-        # Пока возвращаем заглушку
-        return []
-    
+
+    def _get_active_connections(self) -> int:
+        """Получает количество активных соединений"""
+        if self._connections_getter:
+            return self._connections_getter()
+        return 0
+
     def _get_queue_size(self) -> int:
         """Получает размер очереди задач"""
-        # Здесь можно интегрировать с вашей системой очередей
-        # Пока возвращаем заглушку
+        if self._queue_size_getter:
+            return self._queue_size_getter()
         return 0
     
     async def _check_alerts(self):

@@ -127,7 +127,7 @@ export function ProviderTester({ keyId, provider, model }) {
           )}
 
           {/* Информация о fallback */}
-          {result && result.success === false && provider === 'OpenRouter' && (
+          {result && result.success === false && provider?.toLowerCase() === 'openrouter' && (
             <div className="p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-500">
               ⚠️ Если OpenRouter недоступен, система автоматически переключится на GigaChat.
             </div>
