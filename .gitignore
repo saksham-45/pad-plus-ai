@@ -32,8 +32,6 @@ package-lock.json
 yarn.lock
 
 # Build
-frontend/dist/
-frontend/build/
 
 # Data & Databases
 data/
