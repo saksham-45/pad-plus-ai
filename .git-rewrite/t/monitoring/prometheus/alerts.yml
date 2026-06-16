@@ -1,0 +1,201 @@
+# Prometheus Alert Rules for PAD+ AI
+# Правила для генерации алертов на основе метрик
+
+groups:
+  - name: padplus_alerts
+    interval: 30s
+    rules:
+      # === SERVICE AVAILABILITY ===
+      - alert: PADPlusBackendDown
+        expr: up{job="padplus-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: padplus-backend
+        annotations:
+          summary: "PAD+ AI Backend недоступен"
+          description: "Backend сервис PAD+ AI недоступен более 1 минуты"
+
+      - alert: PADPlusBackendHighErrorRate
+        expr: |
+          rate(padplus_requests_total{status=~"5.."}[5m]) 
+          / rate(padplus_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: padplus-backend
+        annotations:
+          summary: "Высокий уровень ошибок в PAD+ AI Backend"
+          description: "Уровень ошибок 5xx превышает 5% в течение 2 минут"
+
+      # === PERFORMANCE ===
+      - alert: PADPlusBackendHighLatency
+        expr: |
+          histogram_quantile(0.95, 
+            rate(padplus_request_duration_seconds_bucket[5m])
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: padplus-backend
+        annotations:
+          summary: "Высокая задержка ответов PAD+ AI Backend"
+          description: "95-й перцентиль задержки превышает 5 секунд"
+
+      - alert: PADPlusPipelineDegraded
+        expr: padplus_pipeline_state{state="degraded"} == 1
+        for: 2m
+        labels:
+          severity: warning
+          service: padplus-pipeline
+        annotations:
+          summary: "Pipeline PAD+ AI работает в деградированном режиме"
+          description: "Один или несколько компонентов pipeline отключены"
+
+      - alert: PADPlusPipelineFailed
+        expr: padplus_pipeline_state{state="failed"} == 1
+        for: 1m
+        labels:
+          severity: critical
+          service: padplus-pipeline
+        annotations:
+          summary: "Pipeline PAD+ AI полностью неработоспособен"
+          description: "Критические компоненты pipeline не работают"
+
+      # === DATABASE ===
+      - alert: PADPlusDBHighFailureRate
+        expr: |
+          rate(padplus_db_failures_total[5m]) 
+          / rate(padplus_db_operations_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          service: padplus-database
+        annotations:
+          summary: "Высокий уровень ошибок базы данных"
+          description: "Более 10% операций с БД завершаются ошибками"
+
+      - alert: PADPlusDBCircuitBreakerOpen
+        expr: padplus_db_circuit_breaker{state="open"} == 1
+        for: 1m
+        labels:
+          severity: critical
+          service: padplus-database
+        annotations:
+          summary: "Circuit Breaker БД открыт"
+          description: "Circuit Breaker базы данных сработал, запросы блокируются"
+
+      # === MEMORY ===
+      - alert: PADPlusHighMemoryUsage
+        expr: |
+          padplus_memory_usage_bytes 
+          / padplus_memory_total_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: padplus-memory
+        annotations:
+          summary: "Высокое использование памяти PAD+ AI"
+          description: "Использование памяти превышает 90% в течение 5 минут"
+
+      - alert: PADPlusMemoryManagerTriggered
+        expr: padplus_memory_manager_active == 1
+        for: 5m
+        labels:
+          severity: warning
+          service: padplus-memory
+        annotations:
+          summary: "Memory Manager PAD+ AI активен"
+          description: "Система управления памятью выполняет очистку"
+
+      # === CACHE ===
+      - alert: PADPlusCacheHitRateLow
+        expr: |
+          rate(padplus_cache_hits_total[5m]) 
+          / rate(padplus_cache_requests_total[5m]) < 0.5
+        for: 10m
+        labels:
+          severity: warning
+          service: padplus-cache
+        annotations:
+          summary: "Низкий hit rate кэша PAD+ AI"
+          description: "Эффективность кэша ниже 50% в течение 10 минут"
+
+      # === SAFETY ===
+      - alert: PADPlusSafetyBlockedHigh
+        expr: rate(padplus_safety_blocked_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: padplus-safety
+        annotations:
+          summary: "Высокая активность Safety Layer"
+          description: "Safety Layer блокирует более 10 запросов в минуту"
+
+      # === TRUTH LOOP ===
+      - alert: PADPlusTruthLoopLowConfidence
+        expr: padplus_truth_confidence_avg < 0.6
+        for: 10m
+        labels:
+          severity: warning
+          service: padplus-truth
+        annotations:
+          summary: "Низкая уверенность Truth Loop"
+          description: "Средняя уверенность проверки фактов ниже 60%"
+
+      # === SYSTEM RESOURCES ===
+      - alert: NodeHighCPU
+        expr: |
+          100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "Высокая загрузка CPU"
+          description: "Загрузка CPU превышает 80% на {{ $labels.instance }}"
+
+      - alert: NodeHighMemory
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "Высокое использование памяти"
+          description: "Использование памяти превышает 90% на {{ $labels.instance }}"
+
+      - alert: NodeDiskFull
+        expr: |
+          (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"})) * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Диск заполнен"
+          description: "Диск {{ $labels.mountpoint }} заполнен на 90% на {{ $labels.instance }}"
+
+      # === CONTAINER ===
+      - alert: ContainerHighMemory
+        expr: |
+          (container_memory_usage_bytes / container_spec_memory_limit_bytes) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          service: container
+        annotations:
+          summary: "Контейнер использует много памяти"
+          description: "Контейнер {{ $labels.name }} использует более 90% лимита памяти"
+
+      - alert: ContainerRestarted
+        expr: |
+          increase(container_last_seen[1h]) > 2
+        for: 1m
+        labels:
+          severity: warning
+          service: container
+        annotations:
+          summary: "Контейнер перезапускался"
+          description: "Контейнер {{ $labels.name }} перезапускался несколько раз за последний час"

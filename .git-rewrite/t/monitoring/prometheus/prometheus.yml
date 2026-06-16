@@ -1,0 +1,66 @@
+# Prometheus configuration for PAD+ AI monitoring
+# Запустите с: prometheus --config.file=prometheus.yml
+
+global:
+  scrape_interval: 15s          # Как часто собирать метрики
+  evaluation_interval: 15s      # Как часто оценивать правила
+  scrape_timeout: 10s           # Таймаут сбора метрик
+  external_labels:
+    monitor: 'padplus-ai'
+    environment: 'production'
+
+# Файлы с правилами алертинга
+rule_files:
+  - "alerts.yml"
+
+# Настройки алертменеджера
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Цели для сбора метрик (scrape configs)
+scrape_configs:
+  # PAD+ AI Backend
+  - job_name: 'padplus-backend'
+    static_configs:
+      - targets: ['backend:8000']
+        labels:
+          service: 'padplus-backend'
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    
+  # Node Exporter (системные метрики)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node-exporter'
+    scrape_interval: 15s
+
+  # cAdvisor (метрики контейнеров)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+    scrape_interval: 15s
+
+  # Prometheus сам себя мониторит
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+    scrape_interval: 15s
+
+# Динамическое обнаружение сервисов (опционально)
+# - job_name: 'docker'
+#   docker_sd_configs:
+#     - host: unix:///var/run/docker.sock
+#       refresh_interval: 5s
+#   relabel_configs:
+#     - source_labels: [__meta_prometheus_job]
+#       action: keep
+#       regex: (.+)

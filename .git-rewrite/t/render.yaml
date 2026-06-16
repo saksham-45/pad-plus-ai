@@ -1,0 +1,68 @@
+services:
+  - type: web
+    name: pad-plus-ai
+    runtime: python
+    plan: free
+    buildCommand: |
+      pip install -r requirements.txt && \
+      cd frontend && \
+      npm install && \
+      npm run build && \
+      cd .. && \
+      python scripts/apply_migrations.py && \
+      python scripts/preload_chroma_model.py
+    startCommand: python start_server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: NODE_VERSION
+        value: 20.10.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pad-plus-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: pad-plus-redis
+          type: redis
+          property: connectionString
+      - key: FRONTEND_URL
+        sync: false
+      - key: CSRF_SECRET_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: ENCRYPTION_SALT
+        sync: false
+      - key: LOG_LEVEL
+        value: info
+      - key: CHROMA_PERSIST_DIR
+        value: /opt/render/project/src/data/chroma
+
+  - type: redis
+    name: pad-plus-redis
+    ipAllowList: []
+    plan: starter
+
+databases:
+  - name: pad-plus-db
+    databaseName: padplus
+    user: padplus
+    plan: starter
+    ipAllowList: []
+    plan: starter
+
+databases:
+  - name: pad-plus-db
+    databaseName: padplus
+    user: padplus
+    plan: starter
+    ipAllowList: []
+    plan: starter
+
+databases:
+  - name: pad-plus-db
+    databaseName: padplus
+    user: padplus
+    plan: starter
+    ipAllowList: []

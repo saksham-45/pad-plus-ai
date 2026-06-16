@@ -1,0 +1,58 @@
+# Environment
+.env
+.env.local
+*.env
+.env.test
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build
+frontend/dist/
+
+# Data & Databases
+data/
+*.db
+*.sqlite3
+*.json.bak
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Chroma
+data/chroma/
+
+# Temporary
+*.tmp
+*.temp

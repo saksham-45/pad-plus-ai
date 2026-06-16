@@ -1,0 +1,107 @@
+# Alertmanager configuration for PAD+ AI
+# Настройка отправки уведомлений об алертах
+
+global:
+  # SMTP настройки для email уведомлений
+  smtp_smarthost: 'localhost:25'
+  smtp_from: 'alertmanager@padplus.ai'
+  smtp_require_tls: false
+
+  # Slack API URL (если используется)
+  # slack_api_url: 'https://hooks.slack.com/services/YOUR/WEBHOOK/URL'
+
+# Шаблоны уведомлений
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Маршрутизация алертов
+route:
+  # Группировка алертов
+  group_by: ['alertname', 'severity', 'service']
+  
+  # Ждать перед отправкой первой нотификации
+  group_wait: 30s
+  
+  # Ждать перед отправкой следующей нотификации в группе
+  group_interval: 5m
+  
+  # Ждать перед повторной отправкой того же алерта
+  repeat_interval: 4h
+  
+  # Получатель по умолчанию
+  receiver: 'default-receiver'
+  
+  # Маршруты для разных типов алертов
+  routes:
+    # Критические алерты - немедленное уведомление
+    - match:
+        severity: critical
+      receiver: 'critical-receiver'
+      group_wait: 10s
+      repeat_interval: 1h
+    
+    # Алерты базы данных
+    - match:
+        service: padplus-database
+      receiver: 'database-team'
+    
+    # Алерты безопасности
+    - match:
+        service: padplus-safety
+      receiver: 'security-team'
+
+# Получатели уведомлений
+receivers:
+  # Получатель по умолчанию
+  - name: 'default-receiver'
+    # Email уведомления
+    email_configs:
+      - to: 'admin@padplus.ai'
+        send_resolved: true
+    
+    # Webhook для интеграции с другими системами
+    # webhook_configs:
+    #   - url: 'http://your-webhook-endpoint.com/alerts'
+    #     send_resolved: true
+
+  # Критические алерты
+  - name: 'critical-receiver'
+    email_configs:
+      - to: 'ops-team@padplus.ai'
+        send_resolved: true
+        html: '{{ template "email.default.html" . }}'
+    
+    # Slack уведомления для критических алертов
+    # slack_configs:
+    #   - channel: '#alerts-critical'
+    #     send_resolved: true
+    #     title: '{{ template "slack.default.title" . }}'
+    #     text: '{{ template "slack.default.text" . }}'
+
+  # Команда базы данных
+  - name: 'database-team'
+    email_configs:
+      - to: 'db-team@padplus.ai'
+        send_resolved: true
+
+  # Команда безопасности
+  - name: 'security-team'
+    email_configs:
+      - to: 'security-team@padplus.ai'
+        send_resolved: true
+
+# Подавление алертов (inhibition rules)
+inhibit_rules:
+  # Если сервис недоступен, не отправлять алерты о высокой задержке
+  - source_match:
+      alertname: 'PADPlusBackendDown'
+    target_match:
+      alertname: 'PADPlusBackendHighLatency'
+    equal: ['service']
+
+  # Если критический алерт активен, подавить предупреждения
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'service']

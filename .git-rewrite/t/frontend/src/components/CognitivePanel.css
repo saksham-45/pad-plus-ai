@@ -1,0 +1,270 @@
+/* CognitivePanel — Стили для отображения когнитивных мета-данных */
+
+.cognitive-panel {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-left: 4px solid #007bff;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-top: 16px;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.cognitive-panel:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.cognitive-panel-header {
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.cognitive-panel-header h4 {
+  margin: 0;
+  color: #495057;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cognitive-panel-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Metric Row */
+.metric-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.metric-label {
+  font-weight: 500;
+  color: #6c757d;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.metric-value {
+  font-weight: 500;
+  color: #212529;
+}
+
+.metric-value.small {
+  font-size: 12px;
+  color: #6c757d;
+}
+
+/* Strategy Value */
+.strategy-value {
+  color: #007bff;
+  font-weight: 600;
+}
+
+/* Intent Value */
+.intent-value {
+  color: #6f42c1;
+  font-weight: 500;
+}
+
+/* Tone Value */
+.tone-value {
+  color: #28a745;
+  font-weight: 500;
+}
+
+/* Time Value */
+.time-value {
+  color: #17a2b8;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+}
+
+/* Confidence Bar */
+.confidence-bar-container {
+  width: 100px;
+  height: 8px;
+  background: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.confidence-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #28a745 0%, #ffc107 50%, #dc3545 100%);
+  border-radius: 4px;
+  transition: width 0.5s ease-in-out;
+}
+
+/* Health Bar */
+.health-bar-container {
+  width: 100px;
+  height: 8px;
+  background: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.health-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #17a2b8 0%, #20c997 50%, #28a745 100%);
+  border-radius: 4px;
+  transition: width 0.5s ease-in-out;
+}
+
+/* Truth Status */
+.truth-status {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.truth-status.verified {
+  background: #d4edda;
+  color: #155724;
+}
+
+.truth-status.partial {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.truth-status.unverified {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+/* Memory Section */
+.memory-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #dee2e6;
+}
+
+.memory-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.memory-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.memory-badge.rag {
+  background: #cce5ff;
+  color: #004085;
+}
+
+.memory-badge.facts {
+  background: #d4edda;
+  color: #155724;
+}
+
+.memory-badge.episodic {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.memory-badge.procedure {
+  background: #e2e3e5;
+  color: #383d41;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .cognitive-panel {
+    padding: 12px 16px;
+  }
+  
+  .metric-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  .metric-label {
+    min-width: 100px;
+    font-size: 13px;
+  }
+  
+  .confidence-bar-container,
+  .health-bar-container {
+    width: 80px;
+  }
+  
+  .memory-indicators {
+    gap: 4px;
+  }
+  
+  .memory-badge {
+    font-size: 11px;
+    padding: 2px 6px;
+  }
+}
+
+/* Animation for panel appearance */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.cognitive-panel {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .cognitive-panel {
+    background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+    border-left-color: #4299e1;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+  
+  .cognitive-panel-header {
+    border-bottom-color: #4a5568;
+  }
+  
+  .cognitive-panel-header h4 {
+    color: #e2e8f0;
+  }
+  
+  .metric-label {
+    color: #a0aec0;
+  }
+  
+  .metric-value {
+    color: #e2e8f0;
+  }
+  
+  .metric-value.small {
+    color: #a0aec0;
+  }
+  
+  .confidence-bar-container,
+  .health-bar-container {
+    background: #4a5568;
+  }
+  
+  .memory-section {
+    border-top-color: #4a5568;
+  }
+}
