@@ -19,6 +19,7 @@ env/
 ENV/
 *.egg-info/
 dist/
+!frontend/dist/
 build/
 .eggs/
 *.egg
