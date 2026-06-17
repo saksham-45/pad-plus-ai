@@ -546,7 +546,8 @@ class LLMService:
             is_free = p_prompt == "0" or p_prompt is None
             cost = "free" if is_free else "paid"
             ctx = m.get("context_length", 4096) or 4096
-            supports_vision = "vision" in m.get("capabilities", {}).get("vision", False) or False
+            caps = m.get("capabilities", {}) or {}
+            supports_vision = bool(caps.get("vision", False))
             result.append({
                 "id": f"openrouter/{mid}",
                 "name": m.get("name", mid),
