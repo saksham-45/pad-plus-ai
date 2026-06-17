@@ -183,16 +183,27 @@ class LLMService:
         if provider and provider != "openrouter":
             base_url = OPENROUTER_BASE
 
-        if model and provider and model.startswith(f"{provider}/"):
-            model = model[len(provider) + 1:]
-
-        if model and "/" not in model and provider:
-            full_model = f"{provider}/{model}"
-        elif not model:
-            model_for_provider = DEFAULT_MODELS.get(provider) if provider else None
-            full_model = model_for_provider or DEFAULT_MODELS.get("openrouter", "gpt-4o-mini")
+        # OpenRouter не добавляет openrouter/ к имени модели — он принимает
+        # либо полный ID (openai/gpt-4o-mini), либо короткое имя (gpt-4o-mini)
+        if provider == "openrouter":
+            if model and "/" in model:
+                if model.startswith("openrouter/"):
+                    model = model[len("openrouter/"):]
+                full_model = model
+            elif model:
+                full_model = model
+            elif DEFAULT_MODELS.get("openrouter"):
+                full_model = DEFAULT_MODELS["openrouter"]
+            else:
+                full_model = "gpt-4o-mini"
         else:
-            full_model = model or DEFAULT_MODELS.get("openrouter", "gpt-4o-mini")
+            if model and "/" not in model and provider:
+                full_model = f"{provider}/{model}"
+            elif not model:
+                model_for_provider = DEFAULT_MODELS.get(provider) if provider else None
+                full_model = model_for_provider or DEFAULT_MODELS.get("openrouter", "gpt-4o-mini")
+            else:
+                full_model = model or DEFAULT_MODELS.get("openrouter", "gpt-4o-mini")
 
         if full_model:
             if ":free" not in full_model and os.getenv("USE_FREE_MODELS", "false").lower() == "true":
@@ -381,16 +392,25 @@ class LLMService:
             raise ValueError("API ключ не настроен.")
 
         base_url = OPENROUTER_BASE
-        if model and provider and model.startswith(f"{provider}/"):
-            model = model[len(provider) + 1:]
-
-        if model and "/" not in model and provider:
-            full_model = f"{provider}/{model}"
-        elif not model:
-            model_for_provider = DEFAULT_MODELS.get(provider) if provider else None
-            full_model = model_for_provider or DEFAULT_MODELS.get("openrouter", "gpt-4o-mini")
+        if provider == "openrouter":
+            if model and "/" in model:
+                if model.startswith("openrouter/"):
+                    model = model[len("openrouter/"):]
+                full_model = model
+            elif model:
+                full_model = model
+            elif DEFAULT_MODELS.get("openrouter"):
+                full_model = DEFAULT_MODELS["openrouter"]
+            else:
+                full_model = "gpt-4o-mini"
         else:
-            full_model = model or DEFAULT_MODELS.get("openrouter", "gpt-4o-mini")
+            if model and "/" not in model and provider:
+                full_model = f"{provider}/{model}"
+            elif not model:
+                model_for_provider = DEFAULT_MODELS.get(provider) if provider else None
+                full_model = model_for_provider or DEFAULT_MODELS.get("openrouter", "gpt-4o-mini")
+            else:
+                full_model = model or DEFAULT_MODELS.get("openrouter", "gpt-4o-mini")
 
         if full_model and ":free" not in full_model and os.getenv("USE_FREE_MODELS", "false").lower() == "true":
             full_model = OPENROUTER_FREE_MODELS[0]
