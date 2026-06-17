@@ -183,7 +183,8 @@ class ProviderManager:
 
             except Exception as e:
                 raw_msg = str(e)
-                error_msg = raw_msg.encode("ascii", errors="replace").decode("ascii")
+                # Без принудительного ascii: в ошибках могут быть NBSP (\xa0) и др. не-ASCII символы
+                error_msg = raw_msg[:500]
                 provider_errors[current_provider] = error_msg
                 logger.warning(f"⚠️ Provider {current_provider} failed: {error_msg[:200]}")
 
@@ -247,7 +248,7 @@ class ProviderManager:
                 return
             except Exception as e:
                 raw_msg = str(e)
-                error_msg = raw_msg.encode("ascii", errors="replace").decode("ascii")
+                error_msg = raw_msg[:500]
                 logger.warning(f"⚠️ Stream: {current_provider} failed: {error_msg[:200]}")
 
                 if not _is_retryable_error(e) or len(chain) == 1:
