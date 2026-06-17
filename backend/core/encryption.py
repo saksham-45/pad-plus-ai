@@ -43,15 +43,15 @@ class KeyEncryptor:
             # Это критично для работы на Render (эфемерная файловая система)
             salt_env = os.getenv("ENCRYPTION_SALT")
             if not salt_env:
-                logger.warning("⚠️ ENCRYPTION_SALT не настроен, используем временную соль")
-                salt = os.urandom(16)
+                logger.warning("⚠️ ENCRYPTION_SALT не настроен, используем fallback-соль")
+                salt = b'PAD+AI_fallback_salt_v1'
             else:
                 try:
                     salt = base64.urlsafe_b64decode(salt_env)
                     logger.info("✅ Соль загружена из переменной окружения")
                 except Exception:
-                    logger.warning("⚠️ Не могу декодировать соль, используем временную")
-                    salt = os.urandom(16)
+                    logger.warning("⚠️ Не могу декодировать соль, используем fallback-соль")
+                    salt = b'PAD+AI_fallback_salt_v1'
 
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
