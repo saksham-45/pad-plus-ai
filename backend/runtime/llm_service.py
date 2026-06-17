@@ -185,6 +185,10 @@ class LLMService:
 
         # OpenRouter не добавляет openrouter/ к имени модели — он принимает
         # либо полный ID (openai/gpt-4o-mini), либо короткое имя (gpt-4o-mini)
+        # "auto" → используем модель по умолчанию
+        if model in ("auto", f"{provider}/auto"):
+            model = None
+
         if provider == "openrouter":
             if model and "/" in model:
                 if model.startswith("openrouter/"):
@@ -395,6 +399,9 @@ class LLMService:
             raise ValueError("API ключ не настроен.")
 
         base_url = OPENROUTER_BASE
+        if model in ("auto", f"{provider}/auto"):
+            model = None
+
         if provider == "openrouter":
             if model and "/" in model:
                 if model.startswith("openrouter/"):

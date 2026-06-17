@@ -1951,8 +1951,8 @@ async def list_provider_models(provider_id: str, current_user: dict = Depends(ge
         ],
         'openrouter': [
             {'id': f'openrouter/{m}', 'name': m.replace('openrouter/', ''), 'max_tokens': 128000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'low'}
-            for m in ['meta-llama/llama-3.1-8b-instruct:free', 'microsoft/phi-3-mini-4k-instruct:free', 'openrouter/auto']
-        ]
+            for m in ['meta-llama/llama-3.1-8b-instruct:free', 'microsoft/phi-3-mini-4k-instruct:free']
+        ] + [{'id': 'openrouter/auto', 'name': 'Auto (выбор модели)', 'max_tokens': 128000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'auto'}]
     }
 
     # Если моделей мало или нет вообще — добавляем fallback
