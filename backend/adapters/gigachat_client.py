@@ -201,7 +201,8 @@ class GigaChatClient:
                     logger.warning(last_error)
                     continue
 
-                last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                resp_body = str(getattr(resp, "content", b""), "utf-8", errors="replace")[:200]
+                last_error = f"HTTP {resp.status_code}: {resp_body}"
                 if attempt < 2:
                     wait = 1 * (2 ** attempt)
                     logger.warning(f"GigaChat chat retry {attempt+1}/3: {last_error}, waiting {wait}s")

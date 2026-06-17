@@ -239,9 +239,12 @@ class LLMService:
 
         status_code = getattr(response, "status_code", None)
         if isinstance(status_code, int) and status_code != 200:
-            raw = str(getattr(response, "text", ""))[:500]
+            try:
+                raw = str(getattr(response, "content", b""), "utf-8", errors="replace")[:500]
+            except Exception:
+                raw = ""
             error_text = raw.encode("ascii", errors="replace").decode("ascii")
-            logger.error(f"❌ HTTP error {status_code}: {error_text}")
+            logger.error(f"HTTP error {status_code}: {error_text}")
             raise ValueError(f"Ошибка API: {status_code} - {error_text}")
 
         data = await acompletion(response)
