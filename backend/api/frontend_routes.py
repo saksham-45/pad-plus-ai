@@ -1943,16 +1943,22 @@ async def list_provider_models(provider_id: str, current_user: dict = Depends(ge
     llm_service = get_llm_service()
     models = llm_service.get_available_models(provider_id)
 
-    # Fallback модели ТОЛЬКО для 2 основных провайдеров
+    # Fallback модели (если get_available_models вернул мало)
     fallback_models = {
         'gigachat': [
             {'id': f'gigachat/{m}', 'name': m, 'max_tokens': 8192, 'supports_vision': False, 'supports_function_calling': False, 'cost': 'free'}
             for m in ['GigaChat', 'GigaChat-Pro', 'GigaChat-Plus']
         ],
         'openrouter': [
-            {'id': f'openrouter/{m}', 'name': m.replace('openrouter/', ''), 'max_tokens': 128000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'low'}
-            for m in ['meta-llama/llama-3.1-8b-instruct:free', 'microsoft/phi-3-mini-4k-instruct:free']
-        ] + [{'id': 'openrouter/auto', 'name': 'Auto (выбор модели)', 'max_tokens': 128000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'auto'}]
+            {'id': 'openrouter/auto', 'name': 'Auto', 'max_tokens': 128000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'auto'},
+            {'id': 'openrouter/openai/gpt-4o-mini', 'name': 'GPT-4o Mini', 'max_tokens': 128000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'paid'},
+            {'id': 'openrouter/openai/gpt-4o', 'name': 'GPT-4o', 'max_tokens': 128000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'paid'},
+            {'id': 'openrouter/anthropic/claude-3.5-sonnet', 'name': 'Claude 3.5 Sonnet', 'max_tokens': 200000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'paid'},
+            {'id': 'openrouter/google/gemini-2.0-flash', 'name': 'Gemini 2.0 Flash', 'max_tokens': 1048576, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'paid'},
+            {'id': 'openrouter/deepseek/deepseek-chat', 'name': 'DeepSeek Chat', 'max_tokens': 32768, 'supports_vision': False, 'supports_function_calling': True, 'cost': 'paid'},
+            {'id': 'openrouter/meta-llama/llama-3.1-8b-instruct:free', 'name': 'Llama 3.1 8B (FREE)', 'max_tokens': 8192, 'supports_vision': False, 'supports_function_calling': True, 'cost': 'free'},
+            {'id': 'openrouter/microsoft/phi-3-mini-4k-instruct:free', 'name': 'Phi-3 Mini (FREE)', 'max_tokens': 4096, 'supports_vision': False, 'supports_function_calling': True, 'cost': 'free'},
+        ]
     }
 
     # Если моделей мало или нет вообще — добавляем fallback

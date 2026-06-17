@@ -529,7 +529,14 @@ class LLMService:
         fallback_models = {
             "openrouter": [
                 {"id": "openrouter/auto", "name": "Auto (OpenRouter)", "max_tokens": 128000, "supports_vision": True, "cost": "paid"},
-                {"id": "openrouter/gpt-4o-mini", "name": "GPT-4o Mini (OpenRouter)", "max_tokens": 128000, "supports_vision": True, "cost": "paid"},
+                {"id": "openrouter/openai/gpt-4o-mini", "name": "GPT-4o Mini", "max_tokens": 128000, "supports_vision": True, "cost": "paid"},
+                {"id": "openrouter/openai/gpt-4o", "name": "GPT-4o", "max_tokens": 128000, "supports_vision": True, "cost": "paid"},
+                {"id": "openrouter/openai/gpt-4-turbo", "name": "GPT-4 Turbo", "max_tokens": 128000, "supports_vision": True, "cost": "paid"},
+                {"id": "openrouter/anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet", "max_tokens": 200000, "supports_vision": True, "cost": "paid"},
+                {"id": "openrouter/anthropic/claude-3.5-haiku", "name": "Claude 3.5 Haiku", "max_tokens": 200000, "supports_vision": True, "cost": "paid"},
+                {"id": "openrouter/google/gemini-2.0-flash", "name": "Gemini 2.0 Flash", "max_tokens": 1048576, "supports_vision": True, "cost": "paid"},
+                {"id": "openrouter/google/gemini-1.5-pro", "name": "Gemini 1.5 Pro", "max_tokens": 1048576, "supports_vision": True, "cost": "paid"},
+                {"id": "openrouter/deepseek/deepseek-chat", "name": "DeepSeek Chat", "max_tokens": 32768, "supports_vision": False, "cost": "paid"},
                 {"id": "openrouter/meta-llama/llama-3.1-8b-instruct:free", "name": "Llama 3.1 8B (FREE)", "max_tokens": 8192, "supports_vision": False, "cost": "free"},
                 {"id": "openrouter/microsoft/phi-3-mini-4k-instruct:free", "name": "Phi-3 Mini (FREE)", "max_tokens": 4096, "supports_vision": False, "cost": "free"},
             ],
