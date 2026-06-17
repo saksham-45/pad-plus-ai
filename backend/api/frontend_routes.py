@@ -1277,7 +1277,8 @@ async def chat(
                         dialog_id = dialog_result.data[0]["id"]
 
                 if dialog_id:
-                    supabase.table("messages").insert({
+                    svc = get_supabase_service()
+                    svc.table("messages").insert({
                         "dialog_id": dialog_id,
                         "role": "user",
                         "content": request.text,
@@ -1286,7 +1287,7 @@ async def chat(
                         "created_at": datetime.now().isoformat()
                     }).execute()
 
-                    supabase.table("messages").insert({
+                    svc.table("messages").insert({
                         "dialog_id": dialog_id,
                         "role": "assistant",
                         "content": result.response if hasattr(result, 'response') else str(result),

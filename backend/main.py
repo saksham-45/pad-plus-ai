@@ -27,10 +27,11 @@ if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
 # Настройка логирования (единожды)
-# Fix для Windows: используем UTF-8 кодировку для логов
-if sys.platform == 'win32':
-    import io
+# Принудительно UTF-8 для stdout/stderr (нужно на Render/Linux где LANG=C)
+import io
+if hasattr(sys.stdout, 'buffer') and sys.stdout.buffer is not None:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'buffer') and sys.stderr.buffer is not None:
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 logging.basicConfig(

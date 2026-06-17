@@ -208,7 +208,8 @@ class ProviderManager:
                 )
 
             except Exception as e:
-                error_msg = str(e)
+                raw_msg = str(e)
+                error_msg = raw_msg.encode("ascii", errors="replace").decode("ascii")
                 provider_errors[current_provider] = error_msg
                 logger.warning(
                     f"⚠️ Provider {current_provider} failed: {error_msg[:200]}"
