@@ -471,7 +471,41 @@ async def update_appearance_settings(
     if not result.data:
         raise HTTPException(status_code=500, detail="Ошибка сохранения настроеk")
     
-    return {"success": True, "message": "Настройки внешнего вида обновлены"}
+    return {"success": True, "message": "Настройки внешнего вида обновлены"    }
+
+
+@router.patch("/settings")
+async def update_settings(data: dict, current_user: dict = Depends(get_current_user)):
+    """Обновление настроек пользователя"""
+    supabase = get_supabase()
+    user_id = current_user["id"]
+
+    settings_update = {}
+    for section, values in data.items():
+        if section == "persona":
+            settings_update["persona_tone"] = values.get("tone")
+            settings_update["persona_detail_level"] = values.get("detail_level")
+            settings_update["persona_emotion_level"] = values.get("emotion_level")
+            settings_update["persona_specialization"] = values.get("specialization")
+        elif section == "notifications":
+            settings_update["notification_email"] = values.get("email")
+            settings_update["notification_push"] = values.get("push")
+            settings_update["notification_sound"] = values.get("sound")
+            settings_update["notification_frequency"] = values.get("frequency")
+        elif section == "appearance":
+            settings_update["theme"] = values.get("theme")
+            settings_update["font_size"] = values.get("font_size")
+            settings_update["compact_mode"] = values.get("compact_mode")
+
+    if settings_update:
+        existing = supabase.table("user_settings").select("id").eq("user_id", user_id).execute()
+        if existing.data:
+            supabase.table("user_settings").update(settings_update).eq("user_id", user_id).execute()
+        else:
+            settings_update["user_id"] = user_id
+            supabase.table("user_settings").insert(settings_update).execute()
+
+    return {"status": "ok"}
 
 
 # ============================================================================
