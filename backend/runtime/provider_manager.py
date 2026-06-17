@@ -131,54 +131,30 @@ class ProviderManager:
         **kwargs,
     ) -> ProviderResult:
         """
-        Генерирует ответ с поддержкой fallback.
+        Генерирует ответ.
         
-        Args:
-            provider: Целевой провайдер. Если None — авто-выбор.
-            Остальные параметры как у LLMService.generate()
-        
-        Returns:
-            ProviderResult с ответом и информацией о fallback
+        Если указан конкретный провайдер — только он и пробуется.
+        Если None — авто-выбор с fallback.
         """
-        # Определяем цепочку провайдеров для попыток
         if provider:
-            chain = FALLBACK_ORDER.get(provider, [provider])
+            unique_chain = [provider]
+            gigachat_api_key = self._get_gigachat_key()
         else:
-            chain = DEFAULT_FALLBACK_CHAIN.copy()
-
-        # Удаляем дубликаты, сохраняя порядок
-        seen = set()
-        unique_chain = []
-        for p in chain:
-            if p not in seen:
-                seen.add(p)
-                unique_chain.append(p)
+            unique_chain = DEFAULT_FALLBACK_CHAIN.copy()
+            gigachat_api_key = None
 
         attempted_providers: List[str] = []
         provider_errors: Dict[str, str] = {}
-        
-        # Если указан конкретный провайдер — пробуем только его цепочку
-        if provider and provider not in unique_chain:
-            unique_chain.insert(0, provider)
-
-        # Если провайдер не указан — используем дефолтную цепочку
-        if not provider:
-            unique_chain = DEFAULT_FALLBACK_CHAIN.copy()
-
-        # Определяем ключи для каждого провайдера
-        # Если api_key один — он универсальный (OpenRouter)
-        # Для GigaChat нужен отдельный ключ из .env
-        gigachat_api_key = self._get_gigachat_key()
 
         for attempt_idx, current_provider in enumerate(unique_chain):
             attempted_providers.append(current_provider)
-            
+
             try:
-                current_key = api_key
-                # Для GigaChat используем системный ключ, если не передан
-                if current_provider == "gigachat" and not current_key:
-                    current_key = gigachat_api_key
-                
+                if current_provider == "gigachat":
+                    current_key = gigachat_api_key or api_key
+                else:
+                    current_key = api_key
+
                 if not current_key:
                     provider_errors[current_provider] = "API ключ не настроен"
                     logger.warning(f"⚠️ Provider {current_provider}: пропущен (нет ключа)")
@@ -196,12 +172,10 @@ class ProviderManager:
                     **kwargs,
                 )
 
-                # Успех
-                fallback_from = unique_chain[0] if attempt_idx > 0 else None
                 return ProviderResult(
                     response=response,
                     fallback_used=attempt_idx > 0,
-                    fallback_from=fallback_from,
+                    fallback_from=unique_chain[0] if attempt_idx > 0 else None,
                     fallback_to=current_provider if attempt_idx > 0 else None,
                     attempted_providers=attempted_providers,
                     provider_errors=provider_errors,
@@ -211,25 +185,18 @@ class ProviderManager:
                 raw_msg = str(e)
                 error_msg = raw_msg.encode("ascii", errors="replace").decode("ascii")
                 provider_errors[current_provider] = error_msg
-                logger.warning(
-                    f"⚠️ Provider {current_provider} failed: {error_msg[:200]}"
-                )
-                
-                # Проверяем, стоит ли пробовать следующий провайдер
+                logger.warning(f"⚠️ Provider {current_provider} failed: {error_msg[:200]}")
+
                 if not _is_retryable_error(e):
-                    # Non-retryable ошибка — прерываем цепочку
                     raise ProviderManagerError(
-                        f"Провайдер {current_provider} вернул критическую ошибку: {error_msg}"
+                        f"Провайдер {current_provider} недоступен: {error_msg}"
                     ) from e
-                
-                # Если это последний провайдер — пробрасываем исключение
+
                 if attempt_idx == len(unique_chain) - 1:
                     break
-                
-                # Небольшая задержка перед fallback
+
                 await asyncio.sleep(0.5)
 
-        # Все провайдеры упали
         raise AllProvidersFailedError(
             errors=provider_errors,
             original_provider=provider,
@@ -247,67 +214,48 @@ class ProviderManager:
         **kwargs,
     ) -> AsyncGenerator[str, None]:
         """
-        Streaming с поддержкой fallback.
-        
-        Для streaming fallback применяется только если первый провайдер
-        не смог начать стриминг (ошибка соединения), но не в середине потока.
+        Streaming для выбранного провайдера.
+        Если провайдер не указан — авто-выбор.
         """
         if provider:
-            chain = FALLBACK_ORDER.get(provider, [provider])
+            chain = [provider]
         else:
             chain = DEFAULT_FALLBACK_CHAIN.copy()
 
-        current_provider = chain[0]
-        current_key = api_key
-        
-        if current_provider == "gigachat" and not current_key:
-            current_key = self._get_gigachat_key()
-        
-        if not current_key:
-            # Fallback на второй в цепочке
-            if len(chain) > 1:
-                current_provider = chain[1]
-                if current_provider == "gigachat":
-                    current_key = self._get_gigachat_key()
-                logger.info(f"↪️ Stream fallback: {chain[0]} → {current_provider}")
-        
-        if not current_key:
-            raise ProviderManagerError("API ключ не настроен ни для одного провайдера")
+        for current_provider in chain:
+            if current_provider == "gigachat":
+                current_key = self._get_gigachat_key() or api_key
+            else:
+                current_key = api_key
 
-        try:
-            async for chunk in self._llm.generate_stream(
-                prompt=prompt,
-                system_prompt=system_prompt,
-                api_key=current_key,
-                model=model,
-                provider=current_provider,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs,
-            ):
-                yield chunk
-        except Exception as e:
-            # Если первый провайдер упал до начала стрима — пробуем fallback
-            if len(chain) > 1 and chain[0] == current_provider:
-                fallback_provider = chain[1]
-                fallback_key = self._get_gigachat_key() if fallback_provider == "gigachat" else api_key
-                
-                if fallback_key:
-                    logger.info(f"↪️ Stream fallback after error: {current_provider} → {fallback_provider}")
-                    async for chunk in self._llm.generate_stream(
-                        prompt=prompt,
-                        system_prompt=system_prompt,
-                        api_key=fallback_key,
-                        model=model,
-                        provider=fallback_provider,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        **kwargs,
-                    ):
-                        yield chunk
-                    return
-            
-            raise
+            if not current_key:
+                logger.warning(f"⚠️ Stream: {current_provider} пропущен (нет ключа)")
+                continue
+
+            try:
+                async for chunk in self._llm.generate_stream(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    api_key=current_key,
+                    model=model,
+                    provider=current_provider,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs,
+                ):
+                    yield chunk
+                return
+            except Exception as e:
+                raw_msg = str(e)
+                error_msg = raw_msg.encode("ascii", errors="replace").decode("ascii")
+                logger.warning(f"⚠️ Stream: {current_provider} failed: {error_msg[:200]}")
+
+                if not _is_retryable_error(e) or len(chain) == 1:
+                    raise ProviderManagerError(f"Провайдер {current_provider} недоступен: {error_msg}") from e
+
+                continue
+
+        raise ProviderManagerError("Все провайдеры недоступны")
 
     async def test_connection(
         self,
