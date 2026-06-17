@@ -183,10 +183,12 @@ class ProviderManager:
 
             except Exception as e:
                 raw_msg = str(e)
-                # Без принудительного ascii: в ошибках могут быть NBSP (\xa0) и др. не-ASCII символы
+                # Ошибки провайдеров могут содержать NBSP (\xa0) и другие не-ASCII символы.
+                # Не кодируем/не приводим к ascii — логируем безопасно как Unicode.
                 error_msg = raw_msg[:500]
                 provider_errors[current_provider] = error_msg
-                logger.warning(f"⚠️ Provider {current_provider} failed: {error_msg[:200]}")
+                safe_preview = error_msg[:200]
+                logger.warning(f"⚠️ Provider {current_provider} failed: {safe_preview}")
 
                 if not _is_retryable_error(e):
                     raise ProviderManagerError(
