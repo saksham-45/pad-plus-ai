@@ -320,31 +320,31 @@ class GigaChatClient:
                         )
 
                     async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    if line.startswith("data:"):
-                        data_str = line[5:].strip()
-                        try:
-                            chunk = json_module.loads(data_str)
-                            if "choices" in chunk:
-                                choices = chunk["choices"]
-                                if choices and isinstance(choices, list):
-                                    delta = choices[0].get("delta", {})
-                                    if isinstance(delta, dict):
-                                        content = delta.get("content", "")
-                                        if content:
-                                            yield content
-                                    message = choices[0].get("message", {})
-                                    if isinstance(message, dict):
-                                        content = message.get("content", "")
-                                        if content:
-                                            yield content
-                            content = chunk.get("content", "")
-                            if content:
-                                yield content
-                        except json_module.JSONDecodeError:
-                            if data_str and data_str not in ("[DONE]", ""):
-                                yield data_str
+                        if not line:
+                            continue
+                        if line.startswith("data:"):
+                            data_str = line[5:].strip()
+                            try:
+                                chunk = json_module.loads(data_str)
+                                if "choices" in chunk:
+                                    choices = chunk["choices"]
+                                    if choices and isinstance(choices, list):
+                                        delta = choices[0].get("delta", {})
+                                        if isinstance(delta, dict):
+                                            content = delta.get("content", "")
+                                            if content:
+                                                yield content
+                                        message = choices[0].get("message", {})
+                                        if isinstance(message, dict):
+                                            content = message.get("content", "")
+                                            if content:
+                                                yield content
+                                content = chunk.get("content", "")
+                                if content:
+                                    yield content
+                            except json_module.JSONDecodeError:
+                                if data_str and data_str not in ("[DONE]", ""):
+                                    yield data_str
 
                     break  # успешный стрим — выходим из retry-цикла
 
