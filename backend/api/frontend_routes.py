@@ -1819,7 +1819,11 @@ async def chat_stream(
             yield f"data: {json.dumps({'done': True})}\n\n"
 
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            try:
+                safe_err = str(e).encode("ascii", errors="replace").decode("ascii")
+            except Exception:
+                safe_err = "Провайдер недоступен (ошибка кодировки)"
+            yield f"data: {json.dumps({'error': safe_err})}\n\n"
 
     return StreamingResponse(
         generate(),
