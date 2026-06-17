@@ -1945,50 +1945,36 @@ async def list_provider_models(provider_id: str, current_user: dict = Depends(ge
         api_key = encryptor.decrypt(result.data[0]["api_key_encrypted"])
 
     llm_service = get_llm_service()
-    models = llm_service.get_available_models(provider_id)
 
-    # Fallback модели (если get_available_models вернул мало)
-    fallback_models = {
-        'gigachat': [
-            {'id': f'gigachat/{m}', 'name': m, 'max_tokens': 8192, 'supports_vision': False, 'supports_function_calling': False, 'cost': 'free'}
-            for m in ['GigaChat', 'GigaChat-Pro', 'GigaChat-Plus']
-        ],
-        'openrouter': [
-            {'id': 'openrouter/auto', 'name': 'Auto', 'max_tokens': 128000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'auto'},
-            {'id': 'openrouter/openai/gpt-4o-mini', 'name': 'GPT-4o Mini', 'max_tokens': 128000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'paid'},
-            {'id': 'openrouter/openai/gpt-4o', 'name': 'GPT-4o', 'max_tokens': 128000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'paid'},
-            {'id': 'openrouter/anthropic/claude-3.5-sonnet', 'name': 'Claude 3.5 Sonnet', 'max_tokens': 200000, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'paid'},
-            {'id': 'openrouter/google/gemini-2.0-flash', 'name': 'Gemini 2.0 Flash', 'max_tokens': 1048576, 'supports_vision': True, 'supports_function_calling': True, 'cost': 'paid'},
-            {'id': 'openrouter/deepseek/deepseek-chat', 'name': 'DeepSeek Chat', 'max_tokens': 32768, 'supports_vision': False, 'supports_function_calling': True, 'cost': 'paid'},
-            {'id': 'openrouter/meta-llama/llama-3.1-8b-instruct:free', 'name': 'Llama 3.1 8B (FREE)', 'max_tokens': 8192, 'supports_vision': False, 'supports_function_calling': True, 'cost': 'free'},
-            {'id': 'openrouter/microsoft/phi-3-mini-4k-instruct:free', 'name': 'Phi-3 Mini (FREE)', 'max_tokens': 4096, 'supports_vision': False, 'supports_function_calling': True, 'cost': 'free'},
-        ]
-    }
+    # Для OpenRouter пытаемся загрузить актуальные модели из API (если есть ключ)
+    models = []
+    if provider_id == "openrouter" and api_key:
+        try:
+            live_models = await llm_service.fetch_openrouter_models()
+            if live_models:
+                models = live_models
+                logger.info(f"Загружено {len(models)} моделей из OpenRouter API")
+        except Exception as e:
+            logger.warning(f"Не удалось загрузить модели OpenRouter: {e}")
 
-    # Если моделей мало или нет вообще — добавляем fallback
-    if len(models) < 5:
-        if provider_id in fallback_models:
-            for fallback_model in fallback_models[provider_id]:
-                if not any(m["id"] == fallback_model["id"] for m in models):
-                    models.append(fallback_model)
-            logger.info(f"? Добавлено {len(fallback_models.get(provider_id, []))} fallback моделей для {provider_id}")
-
-    # Если всё ещё нет моделей — возвращаем пустой список с сообщением
+    # Если живые модели не загрузились — используем статический список
     if not models:
-        models = [
-            {
-                "id": f"{provider_id}/auto",
-                "name": "Auto (выбор модели)",
-                "provider": provider_id,
-                "max_tokens": 4096,
-                "supports_vision": False,
-                "supports_function_calling": True,
-                "cost": "unknown",
-                "note": "Добавьте API ключ для получения списка моделей"
-            }
-        ]
+        models = llm_service.get_available_models(provider_id)
+        logger.info(f"Используется статический список: {len(models)} моделей")
 
-    return {"models": models}
+    # Добавляем Auto в начало списка
+    auto_entry = {"id": f"{provider_id}/auto", "name": "Auto", "max_tokens": 128000, "supports_vision": True, "supports_function_calling": True, "cost": "auto", "provider": provider_id}
+    models.insert(0, auto_entry)
+
+    # Фильтруем дубликаты Auto
+    seen = set()
+    unique = []
+    for m in models:
+        if m["id"] not in seen:
+            seen.add(m["id"])
+            unique.append(m)
+
+    return {"models": unique}
 
 
 

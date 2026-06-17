@@ -522,6 +522,42 @@ class LLMService:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    async def fetch_openrouter_models(self) -> List[Dict[str, Any]]:
+        """Загружает актуальный список моделей из OpenRouter API."""
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get("https://openrouter.ai/api/v1/models")
+                if resp.status_code != 200:
+                    logger.warning(f"OpenRouter models API: HTTP {resp.status_code}")
+                    return []
+                data = resp.json()
+                raw_models = data.get("data", [])
+        except Exception as e:
+            logger.warning(f"Failed to fetch OpenRouter models: {e}")
+            return []
+
+        result = []
+        for m in raw_models:
+            mid = m.get("id", "")
+            if not mid:
+                continue
+            pricing = m.get("pricing", {}) or {}
+            p_prompt = pricing.get("prompt", "0")
+            is_free = p_prompt == "0" or p_prompt is None
+            cost = "free" if is_free else "paid"
+            ctx = m.get("context_length", 4096) or 4096
+            supports_vision = "vision" in m.get("capabilities", {}).get("vision", False) or False
+            result.append({
+                "id": f"openrouter/{mid}",
+                "name": m.get("name", mid),
+                "max_tokens": ctx,
+                "supports_vision": supports_vision,
+                "cost": cost,
+                "provider": "openrouter",
+                "supports_function_calling": True,
+            })
+        return result
+
     def get_available_models(self, provider: Optional[str] = None) -> List[Dict[str, Any]]:
         return self._get_fallback_models(provider)
 
@@ -531,14 +567,12 @@ class LLMService:
                 {"id": "openrouter/auto", "name": "Auto (OpenRouter)", "max_tokens": 128000, "supports_vision": True, "cost": "paid"},
                 {"id": "openrouter/openai/gpt-4o-mini", "name": "GPT-4o Mini", "max_tokens": 128000, "supports_vision": True, "cost": "paid"},
                 {"id": "openrouter/openai/gpt-4o", "name": "GPT-4o", "max_tokens": 128000, "supports_vision": True, "cost": "paid"},
-                {"id": "openrouter/openai/gpt-4-turbo", "name": "GPT-4 Turbo", "max_tokens": 128000, "supports_vision": True, "cost": "paid"},
                 {"id": "openrouter/anthropic/claude-3.5-sonnet", "name": "Claude 3.5 Sonnet", "max_tokens": 200000, "supports_vision": True, "cost": "paid"},
-                {"id": "openrouter/anthropic/claude-3.5-haiku", "name": "Claude 3.5 Haiku", "max_tokens": 200000, "supports_vision": True, "cost": "paid"},
                 {"id": "openrouter/google/gemini-2.0-flash", "name": "Gemini 2.0 Flash", "max_tokens": 1048576, "supports_vision": True, "cost": "paid"},
-                {"id": "openrouter/google/gemini-1.5-pro", "name": "Gemini 1.5 Pro", "max_tokens": 1048576, "supports_vision": True, "cost": "paid"},
                 {"id": "openrouter/deepseek/deepseek-chat", "name": "DeepSeek Chat", "max_tokens": 32768, "supports_vision": False, "cost": "paid"},
                 {"id": "openrouter/meta-llama/llama-3.1-8b-instruct:free", "name": "Llama 3.1 8B (FREE)", "max_tokens": 8192, "supports_vision": False, "cost": "free"},
                 {"id": "openrouter/microsoft/phi-3-mini-4k-instruct:free", "name": "Phi-3 Mini (FREE)", "max_tokens": 4096, "supports_vision": False, "cost": "free"},
+                {"id": "openrouter/google/gemma-4-31b-it:free", "name": "Gemma 4 31B (FREE)", "max_tokens": 262144, "supports_vision": False, "cost": "free"},
             ],
             "gigachat": [
                 {"id": "GigaChat", "name": "GigaChat", "max_tokens": 4096, "supports_vision": False},
