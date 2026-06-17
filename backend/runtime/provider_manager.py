@@ -188,7 +188,9 @@ class ProviderManager:
                 error_msg = raw_msg[:500]
                 provider_errors[current_provider] = error_msg
                 safe_preview = error_msg[:200]
+                # Иногда ошибка может содержать не-ascii (например NBSP). Логируем как unicode, без ascii-коэрсии.
                 logger.warning(f"⚠️ Provider {current_provider} failed: {safe_preview}")
+
 
                 if not _is_retryable_error(e):
                     raise ProviderManagerError(
