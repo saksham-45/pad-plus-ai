@@ -1860,8 +1860,57 @@ async def list_models(provider: Optional[str] = None):
     
     llm = get_llm_service()
     models = llm.get_available_models(provider)
-    
     return {"models": models}
+
+
+@router.get("/settings")
+async def get_settings(current_user: dict = Depends(get_current_user)):
+    supabase = get_supabase()
+    user_id = current_user["id"]
+    result = supabase.table("user_settings").select("*").eq("user_id", user_id).execute()
+    if not result.data:
+        return {
+            "persona": {"tone": "friendly", "detail_level": "moderate", "emotion_level": "balanced", "specialization": "general"},
+            "notifications": {"email": True, "push": False, "sound": True, "frequency": "immediate"},
+            "appearance": {"theme": "dark", "font_size": "medium", "compact_mode": False}
+        }
+    s = result.data[0]
+    return {
+        "persona": {"tone": s.get("persona_tone"), "detail_level": s.get("persona_detail_level"), "emotion_level": s.get("persona_emotion_level"), "specialization": s.get("persona_specialization")},
+        "notifications": {"email": s.get("notification_email"), "push": s.get("notification_push"), "sound": s.get("notification_sound"), "frequency": s.get("notification_frequency")},
+        "appearance": {"theme": s.get("theme"), "font_size": s.get("font_size"), "compact_mode": s.get("compact_mode")}
+    }
+
+
+@router.patch("/settings")
+async def update_settings(data: dict, current_user: dict = Depends(get_current_user)):
+    supabase = get_supabase()
+    user_id = current_user["id"]
+    settings_update = {}
+    for section, values in data.items():
+        if section == "persona":
+            settings_update["persona_tone"] = values.get("tone")
+            settings_update["persona_detail_level"] = values.get("detail_level")
+            settings_update["persona_emotion_level"] = values.get("emotion_level")
+            settings_update["persona_specialization"] = values.get("specialization")
+        elif section == "notifications":
+            settings_update["notification_email"] = values.get("email")
+            settings_update["notification_push"] = values.get("push")
+            settings_update["notification_sound"] = values.get("sound")
+            settings_update["notification_frequency"] = values.get("frequency")
+        elif section == "appearance":
+            settings_update["theme"] = values.get("theme")
+            settings_update["font_size"] = values.get("font_size")
+            settings_update["compact_mode"] = values.get("compact_mode")
+    if settings_update:
+        existing = supabase.table("user_settings").select("id").eq("user_id", user_id).execute()
+        if existing.data:
+            supabase.table("user_settings").update(settings_update).eq("user_id", user_id).execute()
+        else:
+            settings_update["user_id"] = user_id
+            supabase.table("user_settings").insert(settings_update).execute()
+    return {"status": "ok"}
+
 
 
 @router.get("/providers/{provider_id}/models")
