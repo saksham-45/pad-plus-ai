@@ -183,6 +183,9 @@ class LLMService:
         if provider and provider != "openrouter":
             base_url = OPENROUTER_BASE
 
+        if model and provider and model.startswith(f"{provider}/"):
+            model = model[len(provider) + 1:]
+
         if model and "/" not in model and provider:
             full_model = f"{provider}/{model}"
         elif not model:
@@ -378,6 +381,9 @@ class LLMService:
             raise ValueError("API ключ не настроен.")
 
         base_url = OPENROUTER_BASE
+        if model and provider and model.startswith(f"{provider}/"):
+            model = model[len(provider) + 1:]
+
         if model and "/" not in model and provider:
             full_model = f"{provider}/{model}"
         elif not model:
