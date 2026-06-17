@@ -247,7 +247,9 @@ class LLMService:
                 raw = str(getattr(response, "content", b""), "utf-8", errors="replace")[:500]
             except Exception:
                 raw = ""
-            error_text = raw.encode("ascii", errors="replace").decode("ascii")
+            # OpenRouter errors могут содержать NBSP (\xa0) и другие не-ascii символы.
+            # Не конвертируем в ascii — логируем и кидаем ошибку как utf-8 preview.
+            error_text = raw.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
             logger.error(f"HTTP error {status_code}: {error_text}")
             raise ValueError(f"Ошибка API: {status_code} - {error_text}")
 
