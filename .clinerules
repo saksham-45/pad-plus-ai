@@ -1,0 +1,79 @@
+# PAD+ AI v4.0 — System Description
+
+## Overview
+Cognitive AI platform with memory, self-healing, and multi-provider LLM support. Backend in Python (FastAPI), frontend in React (Vite), deployed on Render.
+
+## Stack
+- **Backend:** Python 3.11+ / FastAPI / Uvicorn
+- **Frontend:** React 18 / Vite / TypeScript (pre-built, served as static)
+- **Auth:** Supabase Auth (custom SMTP via Resend)
+- **Database:** PostgreSQL (Supabase pooler) + pgvector
+- **Cache:** Redis (Upstash)
+- **Storage:** Supabase Storage (bucket `documents`)
+- **AI Providers:** OpenRouter, GigaChat (user API keys)
+- **Hosting:** Render (free tier, spins down on inactivity)
+
+## Architecture
+
+### /backend
+| Path | Purpose |
+|------|---------|
+| `main.py` | App entry, middleware, router registration, static frontend mount |
+| `api/frontend_routes.py` | Main API — auth, chat, keys, providers, settings, models |
+| `api/dialog_routes.py` | Dialog CRUD |
+| `api/document_routes.py` | Document upload/download/delete |
+| `api/user_routes.py` | User profile, settings |
+| `api/xray_routes.py` | X-Ray tracing & monitoring |
+| `api/healer_routes.py` | Self-diagnosis |
+| `core/` | Encryption, Supabase client, cache, auth manager, input validation |
+| `memory/` | RAG (PostgreSQL), episodic/SQLite, semantic/SQLite |
+| `runtime/` | Provider manager, orchestrator, code executor |
+
+### /frontend
+Pre-built Vite React app. Static files served via `frontend/dist/`.
+
+## Database Tables (Supabase/PostgreSQL)
+- `users` — user profiles
+- `user_api_keys` — encrypted API keys per user
+- `dialogs` — chat dialogs
+- `messages` — chat messages per dialog
+- `documents` — uploaded file metadata
+- `document_collections` — document grouping
+- `user_settings` — persona, appearance, notifications
+- `rag_dialogs` — RAG memory store (created by rag_postgres.py)
+
+## Key Behaviors
+- **All API routes** under `/api/v1/*`
+- **Static frontend** served at `/` (index.html) and `/assets/*`
+- **WebSocket** at `/ws` for real-time chat
+- **Auth** via Supabase JWT (Authorization: Bearer header)
+- **Encryption** uses Fernet with ENCRYPTION_KEY + ENCRYPTION_SALT env vars
+- **RAG** uses PostgreSQL directly (via psycopg2, not Supabase client)
+
+## Environment Variables
+| Var | Required | Purpose |
+|-----|----------|---------|
+| `SUPABASE_URL` | Yes | Supabase project URL |
+| `SUPABASE_KEY` | Yes | Anon key (starts with sb_publishable_) |
+| `SUPABASE_SERVICE_KEY` | Yes | Service role key (admin operations) |
+| `DATABASE_URL` | Yes | PostgreSQL connection (pooler) |
+| `REDIS_URL` | Yes | Upstash Redis |
+| `ENCRYPTION_KEY` | Yes | Master key for API key encryption (32+ chars) |
+| `ENCRYPTION_SALT` | No | Salt for encryption (stable fallback built-in) |
+| `FRONTEND_URL` | Yes | Public URL for CORS |
+| `DEBUG` | No | Enable debug routes (default false) |
+
+## Known Issues / Gotchas
+1. **Free tier spin-down** — Render free instance sleeps after inactivity (~15 min), first request after sleep takes ~50s
+2. **Encryption salt** — if ENCRYPTION_SALT is invalid/missing, uses hardcoded fallback
+3. **Document processing** — upload works, but text extraction + RAG indexing NOT yet implemented
+4. **GigaChat** — requires valid API key from providers page
+5. **Supabase Client** — `get_supabase()` uses anon key with RLS; `get_supabase_service()` uses service_role (bypasses RLS)
+
+## Handoff Protocol
+When handing off to another AI:
+1. Read this file first
+2. Read `PLAN.md` for current priorities and known bugs
+3. Read Render logs if debugging deployment issues
+4. Never modify infrastructure (Render, Supabase) without explicit user permission
+5. All communication in Russian. Technical terms in English.

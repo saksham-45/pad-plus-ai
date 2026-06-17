@@ -68,9 +68,12 @@ class GigaChatClient:
             cached = self._token_cache.get(cache_key)
             if cached:
                 expires_at = cached.get("expires_at", 0)
-                if expires_at > int(datetime.now().timestamp()) + 60:
+                expires_at_sec = expires_at / 1000 if expires_at > 1e12 else expires_at
+                if expires_at_sec > int(datetime.now().timestamp()) + 60:
                     logger.info("GigaChat: using cached access_token")
                     return cached["access_token"]
+                else:
+                    self._token_cache.pop(cache_key, None)
 
         access_token, expires_at = await self._auth(api_key, encoded_key)
 
@@ -153,6 +156,7 @@ class GigaChatClient:
         model: str,
         temperature: float,
         max_tokens: Optional[int] = None,
+        api_key: Optional[str] = None,
     ) -> httpx.Response:
         headers = {
             "Authorization": f"Bearer {access_token}",
@@ -171,6 +175,10 @@ class GigaChatClient:
         last_error = None
         for attempt in range(3):
             try:
+                if attempt > 0 and api_key:
+                    access_token = await self._get_access_token(api_key)
+                    headers["Authorization"] = f"Bearer {access_token}"
+
                 async with httpx.AsyncClient(
                     timeout=self._timeout,
                     verify=self._verify_tls,
@@ -184,8 +192,14 @@ class GigaChatClient:
                 if resp.status_code == 200:
                     return resp
 
-                if resp.status_code == 401:
-                    raise GigaChatAPIError("401 Unauthorized — access_token истёк")
+                if resp.status_code == 401 and api_key:
+                    encoded_key = self._encode_key(api_key)
+                    cache_key = encoded_key[-32:]
+                    async with self._cache_lock:
+                        self._token_cache.pop(cache_key, None)
+                    last_error = "401 Unauthorized — access_token истёк, обновляю..."
+                    logger.warning(last_error)
+                    continue
 
                 last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
                 if attempt < 2:
@@ -225,6 +239,7 @@ class GigaChatClient:
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
+            api_key=api_key,
         )
 
         data = resp.json()
@@ -273,26 +288,38 @@ class GigaChatClient:
         if max_tokens:
             body["max_tokens"] = max_tokens
 
-        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+        for attempt in range(3):
+            if attempt > 0:
+                access_token = await self._get_access_token(api_key)
 
-        async with httpx.AsyncClient(
-            timeout=self._timeout,
-            verify=self._verify_tls,
-        ) as session:
-            async with session.stream(
-                "POST",
-                GIGACHAT_API_URL,
-                json=body,
-                headers=headers,
-            ) as response:
-                if response.status_code != 200:
-                    error_body = await response.aread()
-                    raise GigaChatAPIError(
-                        f"GigaChat stream error: {response.status_code} — "
-                        f"{error_body.decode('utf-8', errors='replace')[:300]}"
-                    )
+            headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
 
-                async for line in response.aiter_lines():
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                verify=self._verify_tls,
+            ) as session:
+                async with session.stream(
+                    "POST",
+                    GIGACHAT_API_URL,
+                    json=body,
+                    headers=headers,
+                ) as response:
+                    if response.status_code == 401:
+                        encoded_key = self._encode_key(api_key)
+                        cache_key = encoded_key[-32:]
+                        async with self._cache_lock:
+                            self._token_cache.pop(cache_key, None)
+                        logger.warning("GigaChat stream 401 — обновляю токен...")
+                        continue
+
+                    if response.status_code != 200:
+                        error_body = await response.aread()
+                        raise GigaChatAPIError(
+                            f"GigaChat stream error: {response.status_code} — "
+                            f"{error_body.decode('utf-8', errors='replace')[:300]}"
+                        )
+
+                    async for line in response.aiter_lines():
                     if not line:
                         continue
                     if line.startswith("data:"):
@@ -318,6 +345,8 @@ class GigaChatClient:
                         except json_module.JSONDecodeError:
                             if data_str and data_str not in ("[DONE]", ""):
                                 yield data_str
+
+                    break  # успешный стрим — выходим из retry-цикла
 
 
 _client: Optional[GigaChatClient] = None
