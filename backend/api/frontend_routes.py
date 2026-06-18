@@ -329,16 +329,16 @@ async def register(data: UserRegister):
         upsert_data = {**profile_data, "updated_at": datetime.now().isoformat()}
         if service_client:
             try:
-                service_client.table("users").upsert(upsert_data, on_conflict="id").execute()
+                service_client.table("users").upsert(upsert_data, on_conflict="email").execute()
             except Exception as insert_err:
                 logger.warning(f"service client upsert failed, trying anon: {insert_err}")
                 try:
-                    supabase.table("users").upsert(upsert_data, on_conflict="id").execute()
+                    supabase.table("users").upsert(upsert_data, on_conflict="email").execute()
                 except Exception:
                     pass
         else:
             try:
-                supabase.table("users").upsert(upsert_data, on_conflict="id").execute()
+                supabase.table("users").upsert(upsert_data, on_conflict="email").execute()
             except Exception:
                 pass
 
