@@ -23,8 +23,28 @@ try:
 except ImportError:
     from .rag import RAGMemory, get_rag
 
-from .episodic import EpisodicMemory, get_episodic_memory
-from .semantic import SemanticMemory, get_semantic_memory
+# Условный импорт EpisodicMemory в зависимости от конфигурации
+try:
+    from core.config_manager import get_database_url
+    db_url = get_database_url()
+    if db_url and db_url.startswith('postgresql'):
+        from .episodic_postgres import EpisodicMemory, get_episodic_memory
+    else:
+        from .episodic import EpisodicMemory, get_episodic_memory
+except ImportError:
+    from .episodic import EpisodicMemory, get_episodic_memory
+
+# Условный импорт SemanticMemory в зависимости от конфигурации
+try:
+    from core.config_manager import get_database_url
+    db_url = get_database_url()
+    if db_url and db_url.startswith('postgresql'):
+        from .semantic_postgres import SemanticMemory, get_semantic_memory
+    else:
+        from .semantic import SemanticMemory, get_semantic_memory
+except ImportError:
+    from .semantic import SemanticMemory, get_semantic_memory
+
 from .persona import PersonaMemory, get_persona
 
 # Алиас для совместимости
