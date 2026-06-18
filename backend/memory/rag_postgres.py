@@ -9,7 +9,7 @@ import re
 import json
 import uuid
 from typing import List, Dict, Optional, Any, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import math
 
@@ -229,13 +229,6 @@ class RAGMemory:
                 )
             """)
             
-            # Создание векторного индекса (если нет)
-            self.cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_rag_dialogs_embedding 
-                ON rag_dialogs USING ivfflat (embedding vector_cosine_ops) 
-                WITH (lists = 100)
-            """)
-            
             self.conn.commit()
             logger.info("✅ RAG Memory PostgreSQL инициализирован")
             
@@ -324,7 +317,7 @@ class RAGMemory:
             params.append(user_id)
         
         query_keywords = extract_keywords(query) if use_keywords else []
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         
         self.cursor.execute(f"""
             SELECT id, user_message, ai_response, summary, keywords, topic, 
@@ -367,8 +360,8 @@ class RAGMemory:
             combined_score = relevance * RELEVANCE_WEIGHT + recency_score * RECENCY_WEIGHT
             
             meta_dict = meta if meta else {}
-            entities_list = json.loads(entities) if entities else []
-            relations_list = json.loads(relations) if relations else []
+            entities_list = entities if isinstance(entities, list) else (json.loads(entities) if entities else [])
+            relations_list = relations if isinstance(relations, list) else (json.loads(relations) if relations else [])
             
             ranked_results.append({
                 "id": str(doc_id),

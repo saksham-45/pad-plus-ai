@@ -182,7 +182,7 @@ class MemoryConsolidator:
         
         return result
     
-    def consolidate_rag_to_semantic(self) -> ConsolidationResult:
+    def consolidate_rag_to_semantic(self, user_id: Optional[str] = None) -> ConsolidationResult:
         """
         Консолидация RAG памяти в семантическую
         
@@ -262,7 +262,7 @@ class MemoryConsolidator:
         
         return result
     
-    def consolidate_semantic_to_roots(self) -> ConsolidationResult:
+    def consolidate_semantic_to_roots(self, user_id: Optional[str] = None) -> ConsolidationResult:
         """
         Консолидация семантической памяти в Roots
         
@@ -292,10 +292,10 @@ class MemoryConsolidator:
                     category = self._determine_roots_category(knowledge)
                     
                     # Добавляем в Roots
-                    self.roots.add_root(
+                    self.roots.add(
                         category=category,
-                        content=knowledge.content,
-                        confidence=knowledge.confidence
+                        text=knowledge.content,
+                        metadata={"confidence": knowledge.confidence}
                     )
                     items_consolidated += 1
                     insights.append(f"Знание стабилизировано: {knowledge.content[:50]}...")
@@ -315,7 +315,7 @@ class MemoryConsolidator:
         
         return result
     
-    def update_knowledge_connections(self) -> ConsolidationResult:
+    def update_knowledge_connections(self, user_id: Optional[str] = None) -> ConsolidationResult:
         """
         Обновляет связи между знаниями
         """
