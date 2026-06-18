@@ -57,8 +57,7 @@ class DreamSystem:
     
     def __init__(self):
         from memory.consolidation import get_consolidator
-        from memory.episodic import get_episodic_memory
-        from memory.semantic import get_semantic_memory
+        from memory import get_episodic_memory, get_semantic_memory
         from memory.persona import get_persona
         from emotion.pad_model import get_pad_model
         from knowledge.graph import get_knowledge_graph

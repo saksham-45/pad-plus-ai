@@ -12,7 +12,7 @@ class SaveEpisodePhase(PipelinePhase):
 
     async def execute(self, ctx: PipelineContext) -> PhaseResult:
         try:
-            from memory.episodic import get_episodic_memory
+            from memory import get_episodic_memory
             episodic = get_episodic_memory()
 
             response = ctx.context.get("response", "")

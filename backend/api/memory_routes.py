@@ -20,7 +20,7 @@ async def get_memory_dashboard():
 
     # Episodic memory
     try:
-        from memory.episodic import get_episodic_memory
+        from memory import get_episodic_memory
         mem = get_episodic_memory()
         stats = mem.get_stats() if hasattr(mem, 'get_stats') else {}
         by_topic = stats.get("by_topic", {})
@@ -35,7 +35,7 @@ async def get_memory_dashboard():
 
     # Semantic memory
     try:
-        from memory.semantic import get_semantic_memory
+        from memory import get_semantic_memory
         mem = get_semantic_memory()
         stats = mem.get_stats() if hasattr(mem, 'get_stats') else {}
         by_type = stats.get("by_type", {})

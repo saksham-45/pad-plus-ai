@@ -1417,7 +1417,7 @@ async def get_mind_state():
         state["memory"]["rag"] = {"total_dialogs": 0}
     
     try:
-        from memory.episodic import get_episodic_memory
+        from memory import get_episodic_memory
         episodic = get_episodic_memory()
         ep_stats = episodic.get_stats()
         state["memory"]["episodic"] = {
@@ -1426,9 +1426,9 @@ async def get_mind_state():
     except Exception as e:
         logger.warning(f"Episodic stats error: {type(e).__name__}: {e}")
         state["memory"]["episodic"] = {"total_episodes": 0}
-    
+
     try:
-        from memory.semantic import get_semantic_memory
+        from memory import get_semantic_memory
         semantic = get_semantic_memory()
         sem_stats = semantic.get_stats()
         state["memory"]["semantic"] = {
@@ -1607,7 +1607,7 @@ async def get_full_system_status():
         status["memory"]["rag"] = {"status": "unavailable"}
     
     try:
-        from memory.episodic import get_episodic_memory
+        from memory import get_episodic_memory
         episodic = get_episodic_memory()
         ep_stats = episodic.get_stats() if hasattr(episodic, 'get_stats') else {}
         status["memory"]["episodic"] = {
@@ -1616,9 +1616,9 @@ async def get_full_system_status():
         }
     except Exception:
         status["memory"]["episodic"] = {"status": "unavailable"}
-    
+
     try:
-        from memory.semantic import get_semantic_memory
+        from memory import get_semantic_memory
         semantic = get_semantic_memory()
         sem_stats = semantic.get_stats() if hasattr(semantic, 'get_stats') else {}
         status["memory"]["semantic"] = {

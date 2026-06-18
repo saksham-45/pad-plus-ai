@@ -12,7 +12,7 @@ class SemanticPhase(PipelinePhase):
 
     async def execute(self, ctx: PipelineContext) -> PhaseResult:
         try:
-            from memory.semantic import get_semantic_memory
+            from memory import get_semantic_memory
             semantic = get_semantic_memory()
             procedure = semantic.find_applicable_procedure(ctx.user_message)
 

@@ -12,7 +12,7 @@ class EpisodicPhase(PipelinePhase):
 
     async def execute(self, ctx: PipelineContext) -> PhaseResult:
         try:
-            from memory.episodic import get_episodic_memory
+            from memory import get_episodic_memory
             episodic = get_episodic_memory()
             user_id = ctx.context.get("user_id") if ctx.context else None
             similar = episodic.search_episodes(ctx.user_message, limit=2, user_id=user_id)

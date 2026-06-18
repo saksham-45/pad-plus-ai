@@ -454,7 +454,7 @@ class PipelineExecutor:
         truth_confidence = result.truth_confidence or ctx.context.get("truth_confidence", 0)
         if applicable_procedure_id and truth_confidence > 0.6:
             try:
-                from memory.semantic import get_semantic_memory
+                from memory import get_semantic_memory
                 semantic = get_semantic_memory()
                 semantic.record_procedure_success(applicable_procedure_id, success=True)
             except Exception as e:
