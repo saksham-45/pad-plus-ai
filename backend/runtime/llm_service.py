@@ -236,9 +236,13 @@ class LLMService:
             "X-Title": "PAD+ AI",
         }
 
+        # Предварительно сериализуем JSON вручную — httpx иногда падает
+        # с UnicodeEncodeError на \xa0 при внутренней обработке json=body
+        import json as _json
+        raw_request_body = _json.dumps(body, ensure_ascii=False).encode("utf-8")
         response = await self._session.post(
             f"{base_url}/chat/completions",
-            json=body,
+            content=raw_request_body,
             headers=headers,
             timeout=self._timeout,
         )
@@ -246,18 +250,16 @@ class LLMService:
         status_code = getattr(response, "status_code", None)
         if isinstance(status_code, int) and status_code != 200:
             try:
-                raw = str(getattr(response, "content", b""), "utf-8", errors="replace")[:500]
+                raw = bytes(getattr(response, "content", b"")).decode("utf-8", errors="replace")[:500]
             except Exception:
                 raw = ""
-            # OpenRouter errors могут содержать NBSP (\xa0) и другие не-ascii символы.
-            # Не конвертируем в ascii — логируем и кидаем ошибку как utf-8 preview.
             error_text = raw.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
             logger.error(f"HTTP error {status_code}: {error_text}")
             raise ValueError(f"Ошибка API: {status_code} - {error_text}")
 
         # Читаем content напрямую, минуя httpx.response.text (падает на \xa0)
         try:
-            raw_bytes = getattr(response, "content", b"")
+            raw_bytes = bytes(getattr(response, "content", b""))
             raw_text = raw_bytes.decode("utf-8", errors="replace")
         except Exception:
             raise ValueError("OpenRouter: не удалось прочитать тело ответа")
