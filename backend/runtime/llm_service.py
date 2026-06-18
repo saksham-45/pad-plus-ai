@@ -236,31 +236,46 @@ class LLMService:
             "X-Title": "PAD+ AI",
         }
 
-        # Предварительно сериализуем JSON вручную — httpx иногда падает
-        # с UnicodeEncodeError на \xa0 при внутренней обработке json=body
         import json as _json
-        raw_request_body = _json.dumps(body, ensure_ascii=False).encode("utf-8")
-        response = await self._session.post(
-            f"{base_url}/chat/completions",
-            content=raw_request_body,
-            headers=headers,
-            timeout=self._timeout,
-        )
+        raw_request_body = _json.dumps(body, ensure_ascii=True).encode("utf-8")
 
-        status_code = getattr(response, "status_code", None)
+        # httpx может упасть с UnicodeEncodeError при чтении ответа.
+        # Используем прямой http.client, чтобы гарантировать бинарную обработку.
+        import urllib.request
+        import ssl
+
+        _req = urllib.request.Request(
+            f"{base_url}/chat/completions",
+            data=raw_request_body,
+            headers=headers,
+            method="POST",
+        )
+        try:
+            _ctx = ssl.create_default_context()
+            _resp = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: urllib.request.urlopen(_req, context=_ctx, timeout=self._timeout)
+            )
+            _raw = _resp.read()
+            _status = _resp.status
+            _resp.close()
+        except Exception as _e:
+            _err_str = str(_e)
+            raise ValueError(f"OpenRouter HTTP error: {_err_str[:500]}")
+        response = _raw  # теперь response = raw bytes
+        status_code = _status
+
         if isinstance(status_code, int) and status_code != 200:
             try:
-                raw = bytes(getattr(response, "content", b"")).decode("utf-8", errors="replace")[:500]
+                raw = response.decode("utf-8", errors="replace")[:500]
             except Exception:
                 raw = ""
             error_text = raw.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
             logger.error(f"HTTP error {status_code}: {error_text}")
             raise ValueError(f"Ошибка API: {status_code} - {error_text}")
 
-        # Читаем content напрямую, минуя httpx.response.text (падает на \xa0)
+        # response уже raw bytes (не httpx.Response), декодируем напрямую
         try:
-            raw_bytes = bytes(getattr(response, "content", b""))
-            raw_text = raw_bytes.decode("utf-8", errors="replace")
+            raw_text = response.decode("utf-8", errors="replace")
         except Exception:
             raise ValueError("OpenRouter: не удалось прочитать тело ответа")
         data = json.loads(raw_text)
