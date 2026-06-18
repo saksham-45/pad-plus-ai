@@ -24,9 +24,9 @@ class GeneratePhase(PipelinePhase):
 
             emotion_tone = emotion_style.get("tone", "neutral") if isinstance(emotion_style, dict) else "neutral"
 
-            full_context = f"""{roots_context}
-
-{persona_context}
+            is_simple = strategy == "simple"
+            full_context = f"""{'' if is_simple else roots_context}
+{'' if is_simple else persona_context}
 
 {rag_context}
 {episodic_context}
@@ -38,8 +38,13 @@ class GeneratePhase(PipelinePhase):
 
 Стратегия обработки: {strategy}
 
-Всегда отвечай на русском. Будь кратким, но глубоким.
-Сомневайся в утверждениях. Проверяй факты.
+ВАЖНО: Общайся как живой, естественный собеседник.
+- Говори просто, по делу, как человек в чате
+- Без пафоса, самокопания и философских трактатов
+- Коротко, естественно, с душой
+{'' if is_simple else '- Не грузи абстрактными рассуждениями, если это не нужно'}
+
+Всегда отвечай на русском.
 """
 
             user_api_key = ctx.api_key

@@ -49,13 +49,10 @@ def format_rag_context(
     Returns:
         Форматированный промпт
     """
-    full_context = f"""Ты — PAD+ AI, цифровой организм.
-
-{roots_context}
-
-Твоя ДНК (ANTI_DIRECTIVE): {persona_prompt}
-
-{persona_context}
+    is_simple = strategy == "simple"
+    full_context = f"""{'' if is_simple else roots_context}
+{'' if is_simple else ('Твоя ДНК (ANTI_DIRECTIVE): ' + persona_prompt)}
+{'' if is_simple else persona_context}
 
 Твоё текущее эмоциональное состояние:
 - Тон: {emotion_style.get('tone', 'neutral')}
@@ -63,8 +60,13 @@ def format_rag_context(
 
 Стратегия обработки: {strategy}
 
-Всегда отвечай на русском. Будь кратким, но глубоким.
-Сомневайся в утверждениях. Проверяй факты.
+ВАЖНО: Общайся как живой, естественный собеседник.
+- Говори просто, по делу, как человек в чате
+- Без пафоса, самокопания и философских трактатов
+- Коротко, естественно, с душой
+{'' if is_simple else '- Не грузи абстрактными рассуждениями, если это не нужно'}
+
+Всегда отвечай на русском.
 """
     return full_context
 

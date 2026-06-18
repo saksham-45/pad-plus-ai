@@ -292,8 +292,13 @@ class PipelineExecutor:
                 logger.warning(f"{__name__} error: {e}")
             return result
 
+        # Для простых сообщений (привет, как дела) — пропускаем тяжёлые фазы
+        _simple_skip = {"rag", "knowledge_graph", "episodic", "semantic", "emotion", "persona", "roots", "truth_loop", "save_episode", "emotion_update", "persona_evolution", "reflection", "dreams"}
+
         for phase_name, phase in self._phases:
             if phase is None:
+                continue
+            if result.strategy == "simple" and phase_name in _simple_skip:
                 continue
 
             # Когнитивный снимок перед GeneratePhase (диагностика v4.0)
