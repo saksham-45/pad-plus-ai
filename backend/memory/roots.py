@@ -12,8 +12,14 @@ from datetime import datetime
 from typing import Optional, Dict, List, Any
 import json
 import os
+import logging
+
+logger = logging.getLogger("PAD+.roots")
 
 from .base import MemoryRecord
+
+# Приоритет: PostgreSQL > файл > дефолт
+USE_PG_STORAGE = True
 
 
 # Базовые принципы PAD+ AI
@@ -166,8 +172,42 @@ class RootsMemory:
         self._load()
     
     def _load(self):
-        """Загружает корневые знания из файла"""
-        if os.path.exists(self.data_path):
+        """Загружает корневые знания из PostgreSQL (приоритет) или файла."""
+        loaded = False
+        
+        # Приоритет 1: PostgreSQL
+        if USE_PG_STORAGE:
+            try:
+                from core.pg_storage import PgStorage
+                pg = PgStorage("roots_knowledge", mode="collection")
+                rows = pg.load_collection(self._default_collection_factory)
+                for item in rows:
+                    created_at = item.get('created_at')
+                    if isinstance(created_at, str):
+                        created_at = datetime.fromisoformat(created_at)
+                    elif created_at is None:
+                        created_at = datetime.now()
+                    # if already datetime, use as-is
+                    
+                    root = RootKnowledge(
+                        id=item['id'],
+                        text=item['text'],
+                        category=item['category'],
+                        priority=item.get('priority', 50),
+                        immutable=item.get('immutable', True),
+                        created_at=created_at,
+                        source=item.get('source', 'system'),
+                        metadata=item.get('metadata', {})
+                    )
+                    self._roots[root.id] = root
+                if self._roots:
+                    loaded = True
+                    logger.info(f"✅ Roots загружены из PostgreSQL: {len(self._roots)} записей")
+            except Exception as e:
+                logger.warning(f"PostgreSQL недоступен для roots: {e}")
+        
+        # Приоритет 2: Файл
+        if not loaded and os.path.exists(self.data_path):
             try:
                 with open(self.data_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
@@ -183,12 +223,20 @@ class RootsMemory:
                             metadata=item.get('metadata', {})
                         )
                         self._roots[root.id] = root
+                if self._roots:
+                    loaded = True
+                    logger.info(f"✅ Roots загружены из файла: {len(self._roots)} записей")
             except Exception as e:
-                print(f"Ошибка загрузки корней: {e}")
+                logger.warning(f"Ошибка загрузки корней из файла: {e}")
         
-        # Инициализируем базовые принципы если пусто
-        if not self._roots:
+        # Приоритет 3: Дефолт
+        if not loaded:
             self._init_default_roots()
+    
+    def _default_collection_factory(self) -> List[Dict[str, Any]]:
+        """Фабрика дефолтных данных для PostgreSQL."""
+        self._init_default_roots()
+        return [r.to_dict() for r in self._roots.values()]
     
     def _init_default_roots(self):
         """Инициализирует базовые принципы"""
@@ -206,7 +254,18 @@ class RootsMemory:
         self._save()
     
     def _save(self):
-        """Сохраняет корневые знания в файл"""
+        """Сохраняет корневые знания в PostgreSQL (приоритет) и файл (fallback)."""
+        # Приоритет 1: PostgreSQL
+        if USE_PG_STORAGE:
+            try:
+                from core.pg_storage import PgStorage
+                pg = PgStorage("roots_knowledge", mode="collection")
+                for root in self._roots.values():
+                    pg.save_collection_item(root.to_dict())
+            except Exception as e:
+                logger.warning(f"PostgreSQL save roots failed: {e}")
+        
+        # Fallback: файл
         os.makedirs(os.path.dirname(self.data_path), exist_ok=True)
         
         data = {
