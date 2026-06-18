@@ -326,19 +326,26 @@ async def register(data: UserRegister):
         }
 
         service_client = get_supabase_service()
-        upsert_data = {**profile_data, "updated_at": datetime.now().isoformat()}
-        if service_client:
+        profile_data["updated_at"] = datetime.now().isoformat()
+
+        # Пытаемся создать/обновить профиль, учитывая что email мог остаться от предыдущей регистрации
+        try:
+            client = service_client or supabase
+            existing = client.table("users").select("id").eq("email", data.email).execute()
+            if existing.data:
+                # Профиль уже есть (от предыдущей попытки) — обновляем id и поля
+                client.table("users").update(profile_data).eq("email", data.email).execute()
+            else:
+                # Новый профиль
+                client.table("users").insert(profile_data).execute()
+        except Exception as profile_err:
+            # Если service client не сработал, пробуем anon
             try:
-                service_client.table("users").upsert(upsert_data, on_conflict="email").execute()
-            except Exception as insert_err:
-                logger.warning(f"service client upsert failed, trying anon: {insert_err}")
-                try:
-                    supabase.table("users").upsert(upsert_data, on_conflict="email").execute()
-                except Exception:
-                    pass
-        else:
-            try:
-                supabase.table("users").upsert(upsert_data, on_conflict="email").execute()
+                existing = supabase.table("users").select("id").eq("email", data.email).execute()
+                if existing.data:
+                    supabase.table("users").update(profile_data).eq("email", data.email).execute()
+                else:
+                    supabase.table("users").insert(profile_data).execute()
             except Exception:
                 pass
 
