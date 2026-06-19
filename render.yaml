@@ -5,6 +5,7 @@ services:
     plan: free
     buildCommand: |
       pip install -r requirements.txt
+      python scripts/apply_migrations.py
       cd frontend
       npm install
       npm run build
