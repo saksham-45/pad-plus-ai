@@ -340,6 +340,7 @@ app.add_middleware(
         "/openapi.json",
         "/redoc",
         "/api/v1/documents/upload",  # Исключаем загрузку файлов из проверки размера
+        "/api/v1/sentry/webhook",    # Sentry webhook — внешний сервис, не проверяем
     ]
 )
 
