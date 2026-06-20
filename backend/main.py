@@ -355,7 +355,7 @@ app.add_middleware(
     cookie_secure=is_production,
     cookie_httponly=True,
     cookie_samesite="lax",
-    exempt_paths={"/api/v1/sentry/webhook"},
+    exempt_paths={"/api/v1/sentry/webhook", "/api/v1/xray/brain/strategy"},
 )
 
 logger.info("🛡️ CSRFMiddleware установлен")
