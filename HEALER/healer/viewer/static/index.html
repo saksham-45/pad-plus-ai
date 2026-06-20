@@ -105,6 +105,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .toast { position: fixed; bottom: 24px; right: 24px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 20px; display: none; font-size: 13px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); z-index: 200; }
 .toast.show { display: block; animation: slideIn 0.3s; }
 @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.docs { max-width: 900px; }
+.docs section { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+.docs section h2 { font-size: 16px; margin-bottom: 12px; color: var(--blue); }
+.docs section p { margin-bottom: 8px; line-height: 1.6; color: var(--text); }
+.docs section ul, .docs section ol { margin: 8px 0 12px 20px; line-height: 1.7; }
+.docs section li { margin-bottom: 4px; }
+.docs code { background: var(--bg-hover); padding: 2px 6px; border-radius: 4px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: var(--yellow); }
+.doc-table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; font-size: 13px; }
+.doc-table th { text-align: left; padding: 6px 10px; border-bottom: 2px solid var(--border); color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+.doc-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); color: var(--text); }
+.doc-table tr:hover td { background: var(--bg-hover); }
+.doc-code { background: var(--bg-hover); padding: 1px 5px; border-radius: 3px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; color: var(--yellow); }
+.doc-note { background: rgba(88,166,255,0.1); border-left: 3px solid var(--blue); padding: 10px 14px; border-radius: 4px; margin: 12px 0; font-size: 13px; color: var(--text); }
 </style>
 </head>
 <body>
@@ -124,6 +137,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="tab" onclick="switchTab('healer-traces')">Трейсы HEALER</div>
     <div class="tab" onclick="switchTab('viewer-traces')">Мои трейсы</div>
     <div class="tab" onclick="switchTab('self-diag')">Самодиагностика</div>
+    <div class="tab" onclick="switchTab('sentry')">Sentry</div>
+    <div class="tab" onclick="switchTab('instructions')">Инструкции</div>
   </div>
 
   <div id="tab-overview" class="tab-content active">
@@ -174,6 +189,115 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="live-feed" id="selfDiagFeed"></div>
     <div id="selfDiagResults"></div>
     <div class="empty-state" id="selfDiagEmpty"><div class="icon">🩺</div><div>Запусти самодиагностику — HEALER проверит код viewer на проблемы</div></div>
+  </div>
+
+  <div id="tab-sentry" class="tab-content">
+    <div class="controls">
+      <button class="btn btn-primary" onclick="loadSentryIssues()" id="sentryBtn">🔄 Обновить</button>
+      <span class="hint" id="sentryHint">Ошибки из Sentry</span>
+    </div>
+    <div id="sentryContent">
+      <div class="empty-state" id="sentryEmpty"><div class="icon">📡</div><div>Загрузка ошибок из Sentry...</div></div>
+      <table class="report-table" id="sentryTable" style="display:none">
+        <thead><tr><th>Уровень</th><th>Тип ошибки</th><th>Кол-во</th><th>Последний раз</th><th>Первый раз</th><th>Действие</th></tr></thead>
+        <tbody id="sentryBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="tab-instructions" class="tab-content">
+    <div class="docs">
+      <section>
+        <h2>🧬 О HEALER Viewer</h2>
+        <p><strong>HEALER Viewer</strong> — веб-интерфейс для наблюдения за работой системы самовосстановления HEALER и ручного управления диагностикой.</p>
+        <p>Доступен на <code>http://localhost:8085</code>. Viewer подключается к Core Runtime HEALER и X-RAY, показывает трейсы, запускает диагностику, применяет патчи и отображает ошибки из Sentry.</p>
+      </section>
+
+      <section>
+        <h2>📊 Вкладка «Обзор»</h2>
+        <p>Главная панель с ключевыми метриками:</p>
+        <table class="doc-table">
+          <tr><th>Метрика</th><th>Описание</th></tr>
+          <tr><td><span class="doc-code">HEALER трейсов</span></td><td>Количество трейсов, собранных HEALER в процессе диагностики</td></tr>
+          <tr><td><span class="doc-code">Моих трейсов</span></td><td>Трейсы самого Viewer — запросы к API, внутренние операции</td></tr>
+          <tr><td><span class="doc-code">Диагностика</span></td><td>Количество найденных проблем. Жёлтый — есть проблемы, серый — диагностика не запущена</td></tr>
+          <tr><td><span class="doc-code">X-RAY</span></td><td>Статус ядра X-RAY (трассировка). ✅ — работает</td></tr>
+        </table>
+        <p><strong>Severity Bar</strong> — визуальное распределение проблем по важности: 🔴 critical, 🟠 error, 🟡 warning, 🔵 info.</p>
+        <p><strong>Последние отчёты</strong> — таблица найденных проблем с кнопкой <strong>«П»</strong> для быстрой генерации патча.</p>
+      </section>
+
+      <section>
+        <h2>🔍 Запуск диагностики</h2>
+        <p>Кнопка <strong>«Запустить HEALER диагностику»</strong> на вкладке «Обзор» запускает полный цикл проверки:</p>
+        <ul>
+          <li>HEALER последовательно запускает все детекторы (ErrorPathDetector, LatencyAnomalyDetector, HighMemoryDetector, ResourceLeakDetector, SlowImportDetector)</li>
+          <li>Live-feed показывает процесс в реальном времени</li>
+          <li>По завершении — severity bar и таблица отчётов обновляются</li>
+        </ul>
+        <p>Найденные проблемы можно исправить нажатием кнопки <strong>«П»</strong> в таблице — HEALER сгенерирует патч и предложит применить.</p>
+      </section>
+
+      <section>
+        <h2>🩺 Самодиагностика</h2>
+        <p>Вкладка «Самодиагностика» проверяет код самого Viewer на наличие проблем:</p>
+        <ul>
+          <li>Запускает те же детекторы, но на исходниках <code>viewer.py</code> и <code>index.html</code></li>
+          <li>Помогает найти баги в Viewer до того, как они повлияют на работу</li>
+          <li>Результаты отображаются с указанием файла и строки кода</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>📡 Вкладка «Sentry»</h2>
+        <p>Интеграция с <strong>Sentry.io</strong> — централизованный сбор ошибок проекта <code>pad-ai</code>.</p>
+        <table class="doc-table">
+          <tr><th>Элемент</th><th>Описание</th></tr>
+          <tr><td><span class="doc-code">🔄 Обновить</span></td><td>Загружает список нерешённых ошибок из Sentry API</td></tr>
+          <tr><td><span class="doc-code">Таблица ошибок</span></td><td>Уровень (error/warning), тип ошибки, количество повторений, дата первого и последнего появления</td></tr>
+          <tr><td><span class="doc-code">🔍 HEALER</span></td><td>Анализирует ошибку через HEALER. Маппинг типов ошибок на детекторы:</td></tr>
+        </table>
+        <p><strong>Маппинг ошибок → детекторы:</strong></p>
+        <table class="doc-table">
+          <tr><th>Тип ошибки Sentry</th><th>Детектор HEALER</th></tr>
+          <tr><td>ProviderFailedError</td><td>ErrorPathDetector</td></tr>
+          <tr><td>AllProvidersFailedError</td><td>ErrorPathDetector</td></tr>
+          <tr><td>ConnectionError</td><td>ErrorPathDetector</td></tr>
+          <tr><td>TimeoutError</td><td>LatencyAnomalyDetector</td></tr>
+          <tr><td>DatabaseError</td><td>ResourceLeakDetector</td></tr>
+          <tr><td>MemoryError</td><td>HighMemoryDetector</td></tr>
+          <tr><td>ImportError</td><td>SlowImportDetector</td></tr>
+        </table>
+        <p><strong>Как применять:</strong></p>
+        <ol>
+          <li>Нажать <strong>🔍 HEALER</strong> напротив ошибки</li>
+          <li>HEALER анализирует исходники и генерирует патч</li>
+          <li>Появится диалог подтверждения применения</li>
+          <li>После применения патча — перезагрузить/перезапустить сервер</li>
+        </ol>
+        <div class="doc-note">
+          <strong>Требуется:</strong> токен <code>SENTRY_AUTH_TOKEN</code> в <code>.env</code>. Без него вкладка показывает ошибку «SENTRY_AUTH_TOKEN не настроен».
+        </div>
+      </section>
+
+      <section>
+        <h2>🔄 Патчинг</h2>
+        <p>HEALER может не только находить проблемы, но и исправлять их:</p>
+        <ul>
+          <li><strong>quickPatch</strong> — кнопка <strong>«П»</strong> в таблице отчётов. HEALER анализирует проблему и генерирует исправление</li>
+          <li><strong>Apply</strong> — применяет сгенерированный патч к исходному файлу</li>
+          <li><strong>Rollback</strong> — откатывает последний патч (если поддерживается)</li>
+        </ul>
+        <p>Патчи применяются к исходному коду проекта. После применения требуется перезапуск сервера.</p>
+      </section>
+
+      <section>
+        <h2>📋 Вкладки «Трейсы»</h2>
+        <p><strong>Трейсы HEALER</strong> — span-деревья диагностических циклов. Показывают последовательность операций, длительность каждого шага и статус (ok/error).</p>
+        <p><strong>Мои трейсы</strong> — трейсы самого Viewer: запросы к API, вызовы HEALER, диагностические сессии.</p>
+        <p>Клик по трейсу открывает детальный вид с полным span-деревом, длительностями и статусами.</p>
+      </section>
+    </div>
   </div>
 </div>
 
@@ -608,6 +732,107 @@ async function quickPatch(detector, message, location) {
       showToast("Пропуск: " + (data.error || "нет изменений"), "warn");
     }
   } catch (e) {
+    showToast("Ошибка: " + e.message, "error");
+  }
+}
+
+// ── Sentry ──
+async function loadSentryIssues() {
+  const btn = $('sentryBtn');
+  const hint = $('sentryHint');
+  const tbody = $('sentryBody');
+  const table = $('sentryTable');
+  const empty = $('sentryEmpty');
+  btn.disabled = true; btn.textContent = '⏳ Загрузка...';
+  hint.textContent = 'Запрос к Sentry API...';
+  try {
+    const data = await api('/api/sentry/issues');
+    if (data.error) {
+      hint.textContent = `❌ ${data.error}`;
+      empty.innerHTML = `<div class="icon">❌</div><div>Ошибка: ${esc(data.error)}</div>`;
+      empty.style.display = 'block';
+      table.style.display = 'none';
+      btn.disabled = false; btn.textContent = '🔄 Обновить';
+      return;
+    }
+    if (!data.issues || !data.issues.length) {
+      hint.textContent = 'Чисто ✅ нет нерешённых ошибок';
+      empty.innerHTML = '<div class="icon">✅</div><div>Нет нерешённых ошибок в Sentry</div>';
+      empty.style.display = 'block';
+      table.style.display = 'none';
+      btn.disabled = false; btn.textContent = '🔄 Обновить';
+      return;
+    }
+    empty.style.display = 'none';
+    table.style.display = '';
+    hint.textContent = `${data.total} нерешённых ошибок`;
+    tbody.innerHTML = '';
+    data.issues.forEach(issue => {
+      const sev = issue.level || 'error';
+      const firstSeen = issue.first_seen ? new Date(issue.first_seen).toLocaleString() : '—';
+      const lastSeen = issue.last_seen ? new Date(issue.last_seen).toLocaleString() : '—';
+      const errorType = esc(issue.error_type || issue.title || 'unknown');
+      tbody.innerHTML += `<tr>
+        <td><span class="severity-badge severity-${sev === 'error' ? 'error' : sev === 'warning' ? 'warning' : 'info'}">${sev}</span></td>
+        <td><strong>${errorType}</strong><br><span style="font-size:11px;color:var(--text-dim)">${esc(issue.title?.slice(0,60) || '')}</span></td>
+        <td style="font-size:18px;font-weight:700">${issue.count}</td>
+        <td style="font-size:12px">${lastSeen}</td>
+        <td style="font-size:12px">${firstSeen}</td>
+        <td>
+          <button class="btn" style="font-size:11px;padding:4px 8px" onclick="analyzeSentryIssue('${errorType}','${esc(issue.title || '')}')">🔍 HEALER</button>
+          ${issue.permalink ? `<a href="${esc(issue.permalink)}" target="_blank" class="btn" style="font-size:11px;padding:4px 8px;text-decoration:none">🔗</a>` : ''}
+        </td>
+      </tr>`;
+    });
+  } catch (e) {
+    hint.textContent = `❌ ${e.message}`;
+    empty.innerHTML = `<div class="icon">❌</div><div>Ошибка: ${esc(e.message)}</div>`;
+    empty.style.display = 'block';
+    table.style.display = 'none';
+  }
+  btn.disabled = false; btn.textContent = '🔄 Обновить';
+}
+
+async function analyzeSentryIssue(errorType, title) {
+  const hint = $('sentryHint');
+  hint.textContent = `⏳ HEALER анализирует: ${errorType}...`;
+  try {
+    const res = await fetch('/api/sentry/analyze', {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({error_type: errorType, title}),
+    });
+    const data = await res.json();
+    if (data.success && data.patched_code) {
+      hint.textContent = `✅ HEALER сгенерировал патч для ${data.detector}`;
+      showToast(`HEALER: ${data.pattern} — можно применить`, "info");
+      if (confirm(`HEALER предлагает патч для ${data.source_path} (${data.pattern}). Применить?`)) {
+        const applyRes = await fetch("/api/patch/apply", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            source_path: data.source_path,
+            original_code: data.original_code,
+            patched_code: data.patched_code,
+          }),
+        });
+        const applyData = await applyRes.json();
+        if (applyData.success) {
+          showToast("✅ Патч применён. Перезапусти сервер.", "info");
+          hint.textContent = `✅ Патч ${data.pattern} применён к ${data.source_path}`;
+        } else {
+          showToast("❌ Ошибка применения: " + applyData.error, "error");
+        }
+      }
+    } else if (data.success) {
+      hint.textContent = `ℹ️ ${data.detector}: ${data.message || 'HEALER не нашёл что чинить'}`;
+      showToast(`HEALER: ${data.message || 'ничего не найдено'}`, "warn");
+    } else {
+      hint.textContent = `❌ ${data.error}`;
+      showToast("❌ " + data.error, "error");
+    }
+  } catch (e) {
+    hint.textContent = `❌ ${e.message}`;
     showToast("Ошибка: " + e.message, "error");
   }
 }

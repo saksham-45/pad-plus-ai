@@ -239,7 +239,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         trace = make_viewer_trace(self.path.strip('/').replace('/', '.') or 'root')
-        handler_map = {'/api/status': self._handle_status, '/api/traces': self._handle_traces, '/api/trace/': self._handle_trace_detail, '/api/invoke-healer': self._handle_invoke_healer, '/api/healer-result': self._handle_healer_result, '/api/server-traces': self._handle_server_traces, '/api/diagnostics/status/': self._handle_diag_status, '/api/diagnostics/events/': self._handle_diag_events}
+        handler_map = {'/api/status': self._handle_status, '/api/traces': self._handle_traces, '/api/trace/': self._handle_trace_detail, '/api/invoke-healer': self._handle_invoke_healer, '/api/healer-result': self._handle_healer_result, '/api/server-traces': self._handle_server_traces, '/api/diagnostics/status/': self._handle_diag_status, '/api/diagnostics/events/': self._handle_diag_events, '/api/sentry/issues': self._handle_sentry_issues}
         try:
             handled = False
             for prefix, handler in handler_map.items():
@@ -253,7 +253,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
             end_viewer_trace(trace)
 
     def do_POST(self):
-        handlers = {'/api/patch': self._handle_patch, '/api/patch/apply': self._handle_patch_apply, '/api/patch/rollback': self._handle_patch_rollback, '/api/diagnostics/run': self._handle_invoke_healer}
+        handlers = {'/api/patch': self._handle_patch, '/api/patch/apply': self._handle_patch_apply, '/api/patch/rollback': self._handle_patch_rollback, '/api/diagnostics/run': self._handle_invoke_healer, '/api/sentry/analyze': self._handle_sentry_analyze}
         handler = handlers.get(self.path)
         if handler:
             handler()
@@ -442,6 +442,107 @@ class ViewerHandler(BaseHTTPRequestHandler):
     def _handle_healer_result(self):
         """Последний результат диагностики HEALER."""
         self._send_json({'timestamp': _healer_diag_timestamp, 'report_count': len(_healer_diag_result) if _healer_diag_result else 0, 'reports': _healer_diag_result or []})
+
+    def _handle_sentry_issues(self):
+        """GET /api/sentry/issues — список нерешённых ошибок из Sentry."""
+        token = os.getenv("SENTRY_AUTH_TOKEN")
+        if not token:
+            self._send_json({"issues": [], "error": "SENTRY_AUTH_TOKEN не настроен"})
+            return
+
+        try:
+            import urllib.request
+            org = "pad-op"
+            project = "pad-ai"
+            url = f"https://sentry.io/api/0/projects/{org}/{project}/issues/?query=is:unresolved&limit=20"
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+            resp = urllib.request.urlopen(req, timeout=10)
+            data = json.loads(resp.read().decode("utf-8"))
+
+            issues = []
+            for item in data:
+                error_type = "unknown"
+                if item.get("metadata", {}).get("type"):
+                    error_type = item["metadata"]["type"]
+                elif item.get("title"):
+                    error_type = item["title"].split(":")[0].strip()[:50]
+
+                issues.append({
+                    "id": item.get("id", ""),
+                    "title": item.get("title", ""),
+                    "error_type": error_type,
+                    "count": item.get("count", 0),
+                    "level": item.get("level", "error"),
+                    "status": item.get("status", "unresolved"),
+                    "first_seen": item.get("firstSeen", ""),
+                    "last_seen": item.get("lastSeen", ""),
+                    "permalink": item.get("permalink", ""),
+                })
+            self._send_json({"issues": issues, "total": len(issues)})
+        except Exception as e:
+            self._send_json({"issues": [], "error": str(e)})
+
+    def _handle_sentry_analyze(self):
+        """POST /api/sentry/analyze — запустить HEALER диагностику по типу ошибки."""
+        body = self._read_body()
+        error_type = body.get("error_type", "")
+        issue_title = body.get("title", "")
+
+        detector_map = {
+            "ProviderFailedError": "ErrorPathDetector",
+            "AllProvidersFailedError": "ErrorPathDetector",
+            "ConnectionError": "ErrorPathDetector",
+            "TimeoutError": "LatencyAnomalyDetector",
+            "DatabaseError": "ResourceLeakDetector",
+            "MemoryError": "HighMemoryDetector",
+            "ImportError": "SlowImportDetector",
+        }
+        detector = detector_map.get(error_type, "ErrorPathDetector")
+
+        if not HEALER_DIR or not HEALER_DIR.exists():
+            self._send_json({"success": False, "error": "HEALER не найден"}, 500)
+            return
+
+        try:
+            from healer.diagnostics.report import DiagnosticReport, ReportSeverity, ReportCategory
+            from healer.patcher.python_patcher import PythonPatcher
+
+            report = DiagnosticReport(
+                detector=detector,
+                severity=ReportSeverity.ERROR,
+                category=ReportCategory.CORRECTNESS,
+                message=f"Sentry: {error_type} — {issue_title[:200]}",
+            )
+
+            source_path = str(HEALER_DIR / "backend" / "core" / "pipeline" / "phases" / "generate.py")
+            if not os.path.isfile(source_path):
+                source_path = str(HEALER_DIR / "backend" / "main.py")
+            if not os.path.isfile(source_path):
+                source_path = str(HEALER_DIR / "viewer.py")
+
+            result = PythonPatcher().patch_file(source_path, report)
+            if result.success:
+                self._send_json({
+                    "success": True,
+                    "detector": detector,
+                    "source_path": result.source_path,
+                    "pattern": result.pattern,
+                    "diff": result.diff,
+                    "original_code": result.original_code,
+                    "patched_code": result.patched_code,
+                })
+            else:
+                self._send_json({
+                    "success": True,
+                    "detector": detector,
+                    "source_path": source_path,
+                    "pattern": None,
+                    "message": result.error or "HEALER не нашёл что чинить",
+                })
+        except ImportError as e:
+            self._send_json({"success": False, "error": f"HEALER модули не загружены: {e}"}, 503)
+        except Exception as e:
+            self._send_json({"success": False, "error": str(e)}, 500)
 
 def parse_args(argv: list[str] | None=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='HEALER Viewer')

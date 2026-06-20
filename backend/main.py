@@ -80,6 +80,30 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("Целость ядра нарушена")
     logger.info(f"✅ ANTI_DIRECTIVE проверена ({time.time()-start_time:.2f}s)")
     
+    # Инициализация Sentry
+    sentry_dsn = os.getenv("SENTRY_DSN")
+    if sentry_dsn:
+        try:
+            import sentry_sdk
+            sentry_sdk.init(
+                dsn=sentry_dsn,
+                environment=os.getenv("SENTRY_ENV", "production"),
+                traces_sample_rate=0.5,
+                profiles_sample_rate=0.1,
+            )
+            logger.info(f"✅ Sentry инициализирован ({time.time()-start_time:.2f}s)")
+        except Exception as e:
+            logger.warning(f"⚠️ Sentry не загрузился: {e}")
+    else:
+        logger.info("ℹ️ Sentry не настроен (нет SENTRY_DSN)")
+
+    # Пробрасываем токен в Sentry-Healer bridge
+    from core.sentry_healer_bridge import configure as configure_sentry_bridge
+    configure_sentry_bridge(
+        token=os.getenv("SENTRY_AUTH_TOKEN"),
+        mode=os.getenv("HEALER_MODE", "monitor"),
+    )
+
     # Инициализация кэш менеджера
     logger.info("💾 Инициализация кэш менеджера...")
     cache_manager = get_cache_manager()
@@ -115,12 +139,58 @@ async def lifespan(app: FastAPI):
     
     logger.info("🧠 Инициализация RAG Memory...")
     try:
-        from memory.rag import get_rag
+        from memory import get_rag
         rag = get_rag()
         logger.info(f"✅ RAG Memory инициализирована ({time.time()-start_time:.2f}s)")
     except Exception as e:
         logger.warning(f"⚠️ RAG Memory инициализация задерживается: {e}")
-    
+
+    # Memory Hooks
+    logger.info("🔗 Инициализация Memory Hooks...")
+    try:
+        from core.pipeline.memory_hooks import register_default_hooks
+        register_default_hooks()
+        logger.info("✅ Memory Hooks инициализированы")
+    except Exception as e:
+        logger.warning(f"⚠️ Memory Hooks: {e}")
+
+    # Event Bus Listeners
+    logger.info("📡 Инициализация Event Bus Listeners...")
+    try:
+        from core.experience import setup_experience_listener
+        setup_experience_listener()
+        logger.info("✅ Experience Listener зарегистрирован")
+    except Exception as e:
+        logger.warning(f"⚠️ Experience Listener: {e}")
+
+    try:
+        from emotion import setup_emotion_listener
+        setup_emotion_listener()
+        logger.info("✅ Emotion Listener зарегистрирован")
+    except Exception as e:
+        logger.warning(f"⚠️ Emotion Listener: {e}")
+
+    try:
+        from core.strategy import setup_strategy_listener
+        setup_strategy_listener()
+        logger.info("✅ Strategy Listener зарегистрирован")
+    except Exception as e:
+        logger.warning(f"⚠️ Strategy Listener: {e}")
+
+    try:
+        from core.impulse import setup_impulse_listener
+        setup_impulse_listener()
+        logger.info("✅ Impulse Listener зарегистрирован")
+    except Exception as e:
+        logger.warning(f"⚠️ Impulse Listener: {e}")
+
+    try:
+        from core.persona import setup_persona_listener
+        setup_persona_listener()
+        logger.info("✅ Persona Listener зарегистрирован")
+    except Exception as e:
+        logger.warning(f"⚠️ Persona Listener: {e}")
+
     # Запуск X-Ray Broadcaster + мост TraceCollector → WS
     xray_broadcaster = None
     logger.info("🔬 Запуск X-Ray Broadcaster...")
@@ -162,6 +232,24 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"⚠️ X-Ray Broadcaster stop: {e}")
 
+    # Сохранение состояния Persona
+    try:
+        from memory.persona import get_persona
+        persona = get_persona()
+        persona._save()
+        logger.info("✅ Persona сохранена")
+    except Exception as e:
+        logger.warning(f"⚠️ Persona save: {e}")
+
+    # Сохранение состояния Emotion
+    try:
+        from emotion.pad_model import get_pad_model
+        pad = get_pad_model()
+        pad._save()
+        logger.info("✅ Emotion состояние сохранено")
+    except Exception as e:
+        logger.warning(f"⚠️ Emotion save: {e}")
+
     # Отключение системы мониторинга
     await monitoring_system.stop_monitoring()
     logger.info("✅ Система мониторинга остановлена")
@@ -169,6 +257,14 @@ async def lifespan(app: FastAPI):
     # Отключение кэш менеджера
     await cache_manager.disconnect()
     logger.info("✅ Cache manager отключен")
+
+    # Закрытие пула PostgreSQL
+    try:
+        from core.pg_pool import close_pool
+        close_pool()
+        logger.info("✅ PostgreSQL pool закрыт")
+    except Exception as e:
+        logger.warning(f"⚠️ PG pool close: {e}")
 
 
 # CORS middleware — настройка для production
@@ -272,6 +368,15 @@ async def force_cors_headers(request, call_next):
     except Exception as e:
         # Если произошла ошибка в обработке, создаем response с ошибкой
         logger.error(f"Unhandled exception: {e}", exc_info=True)
+        # Отправляем в Sentry с контекстом запроса
+        try:
+            import sentry_sdk
+            sentry_sdk.set_tag("component", "middleware")
+            sentry_sdk.set_tag("method", request.method)
+            sentry_sdk.set_tag("path", request.url.path)
+            sentry_sdk.capture_exception(e)
+        except Exception:
+            pass
         response = JSONResponse(
             status_code=500,
             content={"detail": "Internal Server Error", "error": str(e)}
@@ -373,6 +478,12 @@ def _register_routers(app):
 
     from api.impulse_routes import router as impulse_router
     app.include_router(impulse_router)
+
+    from api.admin_routes import router as admin_router
+    app.include_router(admin_router)
+
+    from api.sentry_routes import router as sentry_router
+    app.include_router(sentry_router)
 
     from api.routes import router as root_router
     app.include_router(root_router)
@@ -512,7 +623,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # RAG
                 try:
-                    from memory.rag import get_rag
+                    from memory import get_rag
                     rag = get_rag()
                     state["memory"] = {"rag": rag.get_stats()}
                 except Exception as e:
@@ -641,7 +752,7 @@ async def get_mind_state() -> dict:
         pass
     
     try:
-        from memory.rag import get_rag
+        from memory import get_rag
         rag = get_rag()
         if rag is not None:
             state["memory"]["rag"] = rag.get_stats()

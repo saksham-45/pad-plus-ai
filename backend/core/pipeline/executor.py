@@ -7,8 +7,8 @@ PipelineExecutor v4.0 — оркестратор фаз обработки за�
 
 from typing import List, Dict, Any, Optional
 import logging
-import time
 import asyncio
+import time
 import uuid
 
 from .models import PipelineState, DegradationInfo, PhaseResult, PipelineResult
@@ -108,7 +108,7 @@ class PipelineExecutor:
         result = PipelineResult(
             success=False,
             response=message,
-            execution_time_ms=(time.time() - start_time) * 1000,
+            execution_time_ms=(time.perf_counter() - start_time) * 1000,
         )
         result.metadata["pipeline_state"] = self._state.value
         result.metadata["degradations"] = [d.to_dict() for d in self._degradations]
@@ -137,7 +137,7 @@ class PipelineExecutor:
         try:
             from core.metrics_collector import get_metrics
             metrics = get_metrics()
-            duration_ms = (time.time() - start_time) * 1000
+            duration_ms = (time.perf_counter() - start_time) * 1000
             metrics.increment("pipeline_requests_total")
             metrics.record_duration("pipeline_duration_ms", duration_ms)
             if result.success:
@@ -189,7 +189,7 @@ class PipelineExecutor:
         api_key: Optional[str] = None,
         provider: Optional[str] = None,
     ) -> PipelineResult:
-        start_time = time.time()
+        start_time = time.perf_counter()
         result = PipelineResult(success=False)
         ctx = PipelineContext(
             user_message=user_message,
@@ -219,6 +219,13 @@ class PipelineExecutor:
         # === X-RAY: инициализация трассировки ===
         request_id = str(uuid.uuid4())
         ctx.context["xray_request_id"] = request_id
+
+        # Привязываем trace_id к Sentry (если SDK активен)
+        try:
+            import sentry_sdk
+            sentry_sdk.set_tag("xray_trace_id", request_id)
+        except Exception:
+            pass
 
         # Маппинг фаз pipeline на TraceStage
         _stage_map = {
@@ -283,7 +290,7 @@ class PipelineExecutor:
         if phase_result.data and phase_result.data.get("blocked"):
             result.response = phase_result.data.get("warning", "")
             result.success = True
-            result.execution_time_ms = (time.time() - start_time) * 1000
+            result.execution_time_ms = (time.perf_counter() - start_time) * 1000
             # X-Ray: завершить сессию при блокировке
             try:
                 from core.xray import get_trace_collector
@@ -292,13 +299,44 @@ class PipelineExecutor:
                 logger.warning(f"{__name__} error: {e}")
             return result
 
-        # Для простых сообщений (привет, как дела) — пропускаем тяжёлые фазы
+        # Memory Hook: before_pipeline
+        try:
+            from core.pipeline.memory_hooks import get_memory_hooks
+            hook_ctx = {"user_id": context.get("user_id")} if context else {}
+            hook_ctx["user_message"] = user_message
+            get_memory_hooks().execute("before_pipeline", hook_ctx)
+        except Exception:
+            pass
+
         _simple_skip = {"rag", "knowledge_graph", "episodic", "semantic", "emotion", "persona", "roots", "truth_loop", "save_episode", "emotion_update", "persona_evolution", "reflection", "dreams"}
+        _independent_group = {"rag", "knowledge_graph", "episodic", "semantic", "emotion"}
+        _skip_phases = set()
 
         for phase_name, phase in self._phases:
             if phase is None:
                 continue
             if result.strategy == "simple" and phase_name in _simple_skip:
+                continue
+            if phase_name in _skip_phases:
+                continue
+
+            if phase_name in _independent_group:
+                parallel_set = [(n, p) for n, p in self._phases if n in _independent_group and not (result.strategy == "simple" and n in _simple_skip)]
+                for n, _ in parallel_set:
+                    _skip_phases.add(n)
+                coros = [p.execute(ctx) for _, p in parallel_set]
+                gathered = await asyncio.gather(*coros, return_exceptions=True)
+                for (n, _), pr in zip(parallel_set, gathered):
+                    if isinstance(pr, Exception):
+                        pr = PhaseResult(success=False, errors=[str(pr)])
+                    if pr.data:
+                        ctx.context.update(pr.data)
+                    self._apply_phase_result(n, pr, ctx, result, start_time, request_id)
+                    if not pr.success:
+                        if pr.degradation:
+                            self._mark_degraded(pr.degradation.component, pr.degradation.error, pr.degradation.severity, pr.degradation.fallback_applied)
+                        elif pr.errors:
+                            result.errors.extend(pr.errors)
                 continue
 
             # Когнитивный снимок перед GeneratePhase (диагностика v4.0)
@@ -333,7 +371,7 @@ class PipelineExecutor:
                 continue
 
             # X-Ray: запись фазы (ВСЕГДА, даже для failed/degraded)
-            phase_dur = (time.time() - ctx.context.get("start_time", start_time)) * 1000
+            phase_dur = (time.perf_counter() - ctx.context.get("start_time", start_time)) * 1000
             phase_status = "error" if not phase_result.success else "success"
             phase_error = phase_result.errors[0] if phase_result.errors else None
             await _record_xray_phase(phase_name, phase_result.data or {}, phase_dur, pstatus=phase_status, perror=phase_error)
@@ -367,6 +405,18 @@ class PipelineExecutor:
                 ctx.context.update(phase_result.data)
 
             self._apply_phase_result(phase_name, phase_result, result)
+
+            # Memory Hook: after_phase
+            try:
+                from core.pipeline.memory_hooks import get_memory_hooks
+                hctx = {
+                    "phase_name": phase_name,
+                    "phase_result": (phase_result.data or {}),
+                    "user_id": context.get("user_id") if context else None,
+                }
+                get_memory_hooks().execute("after_phase", hctx)
+            except Exception:
+                pass
 
             # Skip generate if flag set (identity phase, etc.)
             if phase_result.data and phase_result.data.get("skip_generate"):
@@ -425,7 +475,7 @@ class PipelineExecutor:
 
             # Safety block — early return
             if phase_name == "safety" and not result.safety_passed:
-                result.execution_time_ms = (time.time() - start_time) * 1000
+                result.execution_time_ms = (time.perf_counter() - start_time) * 1000
                 # X-Ray: завершить сессию при блокировке safety
                 try:
                     from core.xray import get_trace_collector
@@ -460,6 +510,18 @@ class PipelineExecutor:
             except Exception as e:
                 logger.warning(f"{__name__} error: {e}")
 
+        # Memory Hook: before_response
+        try:
+            from core.pipeline.memory_hooks import get_memory_hooks
+            hctx = {
+                "user_id": context.get("user_id") if context else None,
+                "user_message": user_message,
+                "_generated_response": result.response,
+            }
+            get_memory_hooks().execute("before_response", hctx)
+        except Exception:
+            pass
+
         # === Finalize ===
         if self._degradations:
             result.response += self._format_degradation_notice()
@@ -476,7 +538,7 @@ class PipelineExecutor:
                 result.response = "Ошибка: не удалось сгенерировать ответ"
         else:
             result.success = True
-        result.execution_time_ms = (time.time() - start_time) * 1000
+        result.execution_time_ms = (time.perf_counter() - start_time) * 1000
         self._call_count += 1
 
         self._reset_fail_state()
@@ -493,7 +555,35 @@ class PipelineExecutor:
                 "execution_time_ms": result.execution_time_ms,
             })
         except Exception as e:
-            logger.warning(f"Experience capture failed: {e}")
+            logger.warning(f"X-Ray session complete error: {e}")
+
+        # Event Bus: публикация dialog_completed
+        try:
+            from core.events import get_events
+            await get_events().dialog_completed.publish({
+                "user_message": user_message,
+                "result": result.to_dict(),
+                "strategy": result.strategy,
+                "success": result.success,
+                "execution_time_ms": result.execution_time_ms,
+                "user_id": context.get("user_id") if context else None,
+                "session_id": session_id,
+            })
+        except Exception as e:
+            logger.warning(f"Event publish error: {e}")
+
+        # Memory Hook: after_process
+        try:
+            from core.pipeline.memory_hooks import get_memory_hooks
+            hctx = {
+                "user_id": context.get("user_id") if context else None,
+                "user_message": user_message,
+                "_generated_response": result.response,
+                "success": result.success,
+            }
+            get_memory_hooks().execute("after_process", hctx)
+        except Exception:
+            pass
 
         logger.info(
             f"Pipeline: {result.intent} | {result.strategy} | "
