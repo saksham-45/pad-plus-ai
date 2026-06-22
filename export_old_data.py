@@ -35,7 +35,7 @@ try:
     for ep in episodes:
         episodes_data.append({
             "id": ep[0],
-            "timestamp": ep[1].isoformat() if ep[1] else None,
+            "timestamp": str(ep[1]) if ep[1] else None,
             "user_id": ep[2],
             "situation": ep[3],
             "participants": ep[4],
@@ -46,18 +46,18 @@ try:
             "topic": ep[9],
             "emotion_before": ep[10],
             "emotion_after": ep[11],
-            "emotion_impact": ep[12],
+            "emotion_impact": float(ep[12]) if ep[12] is not None else 0.0,
             "entities": ep[13],
             "concepts": ep[14],
             "keywords": ep[15],
             "related_episodes": ep[16],
             "parent_episode": ep[17],
             "continuation_of": ep[18],
-            "significance": ep[19],
-            "access_count": ep[20],
-            "last_accessed": ep[21].isoformat() if ep[21] else None,
-            "duration_seconds": ep[22],
-            "success": ep[23],
+            "significance": float(ep[19]) if ep[19] is not None else 0.5,
+            "access_count": int(ep[20]) if ep[20] is not None else 0,
+            "last_accessed": str(ep[21]) if ep[21] else None,
+            "duration_seconds": float(ep[22]) if ep[22] is not None else 0.0,
+            "success": bool(ep[23]) if ep[23] is not None else True,
             "feedback": ep[24]
         })
     
@@ -90,21 +90,21 @@ try:
     knowledge = old_cur.fetchall()
     
     # Сохранение в JSON
-    knowledge_data = []
+        knowledge_data = []
     for kn in knowledge:
         knowledge_data.append({
             "id": kn[0],
             "content": kn[1],
             "knowledge_type": kn[2],
             "summary": kn[3],
-            "confidence": kn[4],
+            "confidence": float(kn[4]) if kn[4] is not None else 0.7,
             "domain": kn[5],
             "entities": kn[6],
             "concepts": kn[7],
             "related_knowledge": kn[8],
-            "access_count": kn[9],
-            "last_accessed": kn[10].isoformat() if kn[10] else None,
-            "created_at": kn[11].isoformat() if kn[11] else None
+            "access_count": int(kn[9]) if kn[9] is not None else 0,
+            "last_accessed": str(kn[10]) if kn[10] else None,
+            "created_at": str(kn[11]) if kn[11] else None
         })
     
     old_cur.close()
@@ -137,21 +137,16 @@ if episodes_data:
         
         # Вставка эпизодов
         for ep in episodes_data:
-            new_cur.execute("""
-                INSERT INTO episodes (
-                    id, timestamp, user_id, situation, participants, location,
-                    user_message, ai_response, intent, topic, emotion_before,
-                    emotion_after, emotion_impact, entities, concepts, keywords,
-                    related_episodes, parent_episode, continuation_of, significance,
-                    access_count, last_accessed, duration_seconds, success, feedback
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            "", (
-                ep["id"], ep["timestamp"], ep["user_id"], ep["situation"], ep["participants"], ep["location"],
-                ep["user_message"], ep["ai_response"], ep["intent"], ep["topic"], ep["emotion_before"],
-                ep["emotion_after"], ep["emotion_impact"], ep["entities"], ep["concepts"], ep["keywords"],
-                ep["related_episodes"], ep["parent_episode"], ep["continuation_of"], ep["significance"],
-                ep["access_count"], ep["last_accessed"], ep["duration_seconds"], ep["success"], ep["feedback"]
-            ))
+            new_cur.execute(
+                "INSERT INTO episodes (id, timestamp, user_id, situation, participants, location, user_message, ai_response, intent, topic, emotion_before, emotion_after, emotion_impact, entities, concepts, keywords, related_episodes, parent_episode, continuation_of, significance, access_count, last_accessed, duration_seconds, success, feedback) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    ep["id"], ep["timestamp"], ep["user_id"], ep["situation"], json.dumps(ep["participants"]), ep["location"],
+                    ep["user_message"], ep["ai_response"], ep["intent"], ep["topic"], json.dumps(ep["emotion_before"]),
+                    json.dumps(ep["emotion_after"]), ep["emotion_impact"], json.dumps(ep["entities"]), json.dumps(ep["concepts"]), json.dumps(ep["keywords"]),
+                    json.dumps(ep["related_episodes"]), ep["parent_episode"], ep["continuation_of"], ep["significance"],
+                    ep["access_count"], ep["last_accessed"], ep["duration_seconds"], ep["success"], json.dumps(ep["feedback"])
+                )
+            )
         
         new_conn.commit()
         print(f"   Импортировано: {len(episodes_data)} эпизодов")
@@ -173,15 +168,13 @@ if knowledge_data:
         
         # Вставка знаний
         for kn in knowledge_data:
-            new_cur.execute("""
-                INSERT INTO semantic_knowledge (
-                    id, content, knowledge_type, summary, confidence, domain,
-                    entities, concepts, related_knowledge, access_count, last_accessed, created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            "", (
-                kn["id"], kn["content"], kn["knowledge_type"], kn["summary"], kn["confidence"], kn["domain"],
-                kn["entities"], kn["concepts"], kn["related_knowledge"], kn["access_count"], kn["last_accessed"], kn["created_at"]
-            ))
+            new_cur.execute(
+                "INSERT INTO semantic_knowledge (id, content, knowledge_type, summary, confidence, domain, entities, concepts, related_knowledge, access_count, last_accessed, created_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    kn["id"], kn["content"], kn["knowledge_type"], kn["summary"], kn["confidence"], kn["domain"],
+                    json.dumps(kn["entities"]), json.dumps(kn["concepts"]), json.dumps(kn["related_knowledge"]), kn["access_count"], kn["last_accessed"], kn["created_at"]
+                )
+            )
         
         new_conn.commit()
         print(f"   Импортировано: {len(knowledge_data)} знаний")

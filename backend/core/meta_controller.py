@@ -1,4 +1,5 @@
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -41,6 +42,9 @@ class MetaController:
         self._snapshots: list[MetaSnapshot] = []
         self._max_snapshots = 50
         self._dialogs_since_reflection = 0
+        self._reflection_threshold = int(os.getenv("META_REFLECTION_DIALOGS", "10"))
+        self._low_success_threshold = float(os.getenv("META_LOW_SUCCESS", "0.4"))
+        self._high_significance = float(os.getenv("META_HIGH_SIGNIFICANCE", "0.8"))
 
     def set_state(self, state: CognitiveState) -> None:
         old = self._state
@@ -82,9 +86,9 @@ class MetaController:
         self._dialogs_since_reflection += 1
 
         need_reflection = (
-            self._dialogs_since_reflection >= 10
-            or avg_success < 0.4
-            or significance > 0.8
+            self._dialogs_since_reflection >= self._reflection_threshold
+            or avg_success < self._low_success_threshold
+            or significance > self._high_significance
         )
         if need_reflection:
             self._state = CognitiveState.REFLECTING

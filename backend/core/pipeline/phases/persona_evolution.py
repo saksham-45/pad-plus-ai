@@ -1,4 +1,5 @@
 import logging
+import os
 
 from ..base import PipelinePhase
 from ..context import PipelineContext
@@ -6,7 +7,7 @@ from ..models import PhaseResult
 
 logger = logging.getLogger("padplus.pipeline.persona_evolution")
 
-REFLECTION_INTERVAL = 10
+REFLECTION_INTERVAL = int(os.getenv("REFLECTION_INTERVAL", "10"))
 _reflection_counter = 0
 
 

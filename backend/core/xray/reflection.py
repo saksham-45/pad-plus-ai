@@ -13,6 +13,7 @@
 
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List
+import os
 import time
 import logging
 
@@ -70,10 +71,10 @@ class ReflectionLoop:
         print(reflection_result.lessons)  # ["Уверенность ниже ожидаемой"]
     """
     
-    # Пороги для анализа
-    LOW_CONFIDENCE_THRESHOLD = 0.5
-    HIGH_LOAD_THRESHOLD = 0.8
-    SLOW_EXECUTION_THRESHOLD_MS = 5000
+    # Пороги для анализа (из .env или по умолчанию)
+    LOW_CONFIDENCE_THRESHOLD = float(os.getenv("REFLECTION_LOW_CONFIDENCE", "0.5"))
+    HIGH_LOAD_THRESHOLD = float(os.getenv("REFLECTION_HIGH_LOAD", "0.8"))
+    SLOW_EXECUTION_THRESHOLD_MS = int(os.getenv("REFLECTION_SLOW_MS", "5000"))
     
     def __init__(self):
         """Инициализация ReflectionLoop"""

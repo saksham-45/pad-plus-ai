@@ -148,6 +148,75 @@ DEFAULT_CONFIG = {
         "type": "bool",
         "description": "Автоматическое обучение"
     },
+    "autonomy.dream_interval": {
+        "value": 20,
+        "type": "int",
+        "description": "Интервал снов (диалоги)"
+    },
+    "autonomy.consolidation_interval": {
+        "value": 10,
+        "type": "int",
+        "description": "Интервал консолидации (диалоги)"
+    },
+    "autonomy.meta_reflection_dialogs": {
+        "value": 10,
+        "type": "int",
+        "description": "Диалогов до MetaController рефлексии"
+    },
+    "autonomy.meta_low_success": {
+        "value": 0.4,
+        "type": "float",
+        "description": "Порог низкой успешности стратегий"
+    },
+    "autonomy.meta_high_significance": {
+        "value": 0.8,
+        "type": "float",
+        "description": "Порог значимости для рефлексии"
+    },
+
+    # Dreams
+    "dreams.min_idle_minutes": {
+        "value": 30,
+        "type": "int",
+        "description": "Минуты простоя до сна"
+    },
+    "dreams.duration": {
+        "value": 60,
+        "type": "int",
+        "description": "Длительность сна (секунды)"
+    },
+    "dreams.episodes_per_dream": {
+        "value": 50,
+        "type": "int",
+        "description": "Эпизодов за сон"
+    },
+    "dreams.connection_threshold": {
+        "value": 0.6,
+        "type": "float",
+        "description": "Порог связей в KG"
+    },
+    "dreams.emotion_decay": {
+        "value": 0.5,
+        "type": "float",
+        "description": "Затухание эмоций во сне"
+    },
+
+    # Reflection (X-Ray)
+    "reflection.low_confidence": {
+        "value": 0.5,
+        "type": "float",
+        "description": "Порог низкой уверенности"
+    },
+    "reflection.high_load": {
+        "value": 0.8,
+        "type": "float",
+        "description": "Порог когнитивной нагрузки"
+    },
+    "reflection.slow_ms": {
+        "value": 5000,
+        "type": "int",
+        "description": "Порог медленного выполнения (мс)"
+    },
     
     # Cache
     "cache.enabled": {
@@ -281,7 +350,21 @@ class ConfigManager:
             "SAFETY_STRICT_MODE": "safety.strict_mode",
             "MAX_REQUESTS_PER_MINUTE": "safety.max_requests_per_minute",
             "RAG_MAX_ITEMS": "memory.rag.max_items",
-            "HYGIENE_SIMILARITY_THRESHOLD": "memory.hygiene.similarity_threshold"
+            "HYGIENE_SIMILARITY_THRESHOLD": "memory.hygiene.similarity_threshold",
+            "DREAM_INTERVAL": "autonomy.dream_interval",
+            "CONSOLIDATION_INTERVAL": "autonomy.consolidation_interval",
+            "REFLECTION_INTERVAL": "autonomy.reflection_interval",
+            "META_REFLECTION_DIALOGS": "autonomy.meta_reflection_dialogs",
+            "META_LOW_SUCCESS": "autonomy.meta_low_success",
+            "META_HIGH_SIGNIFICANCE": "autonomy.meta_high_significance",
+            "DREAM_MIN_IDLE_MINUTES": "dreams.min_idle_minutes",
+            "DREAM_DURATION": "dreams.duration",
+            "DREAM_EPISODES_PER_DREAM": "dreams.episodes_per_dream",
+            "DREAM_CONNECTION_THRESHOLD": "dreams.connection_threshold",
+            "DREAM_EMOTION_DECAY": "dreams.emotion_decay",
+            "REFLECTION_LOW_CONFIDENCE": "reflection.low_confidence",
+            "REFLECTION_HIGH_LOAD": "reflection.high_load",
+            "REFLECTION_SLOW_MS": "reflection.slow_ms",
         }
         return mapping.get(env_key, env_key.lower().replace('_', '.'))
     

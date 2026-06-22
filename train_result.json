@@ -1,0 +1,89 @@
+{
+  "brain": {
+    "status": "deprecated",
+    "message": "XRayBrain was removed"
+  },
+  "system_state": {
+    "load": 0.0,
+    "confidence": 0.5,
+    "recent_errors": 0,
+    "active_sessions": 0,
+    "total_requests": 44,
+    "success_count": 44,
+    "success_rate": 1.0,
+    "last_updated": 1782119035.107542
+  },
+  "meta_learner": {
+    "total_decisions": 122,
+    "total_success": 122,
+    "overall_success_rate": 1.0,
+    "strategies": {
+      "simple": {
+        "success": 34,
+        "fail": 0,
+        "count": 34,
+        "success_rate": 1.0,
+        "fail_rate": 0.0,
+        "avg_confidence": 0.6,
+        "last_used": 1782118379.3781326
+      },
+      "retrieval": {
+        "success": 44,
+        "fail": 0,
+        "count": 44,
+        "success_rate": 1.0,
+        "fail_rate": 0.0,
+        "avg_confidence": 0.6,
+        "last_used": 1782118930.3292289
+      },
+      "reasoning": {
+        "success": 4,
+        "fail": 0,
+        "count": 4,
+        "success_rate": 1.0,
+        "fail_rate": 0.0,
+        "avg_confidence": 0.6,
+        "last_used": 1782118480.3630486
+      },
+      "creative": {
+        "success": 14,
+        "fail": 0,
+        "count": 14,
+        "success_rate": 1.0,
+        "fail_rate": 0.0,
+        "avg_confidence": 0.6,
+        "last_used": 1782118662.4460437
+      },
+      "reflective": {
+        "success": 14,
+        "fail": 0,
+        "count": 14,
+        "success_rate": 1.0,
+        "fail_rate": 0.0,
+        "avg_confidence": 0.6,
+        "last_used": 1782118950.3059707
+      },
+      "learning": {
+        "success": 12,
+        "fail": 0,
+        "count": 12,
+        "success_rate": 1.0,
+        "fail_rate": 0.0,
+        "avg_confidence": 0.6,
+        "last_used": 1782119049.6076825
+      }
+    },
+    "best_strategy": "retrieval",
+    "worst_strategy": "reasoning",
+    "patterns": {
+      "patterns": [],
+      "recommendations": [],
+      "recent_success_rate": 1.0
+    }
+  },
+  "reflection": {
+    "reflection_count": 0,
+    "adjustment_count": 0,
+    "adjustment_rate": 0.0
+  }
+}

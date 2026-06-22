@@ -15,6 +15,7 @@ from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 import logging
 import asyncio
+import os
 import random
 
 logger = logging.getLogger("PAD+.dreams")
@@ -72,13 +73,13 @@ class DreamSystem:
         # История снов
         self._dream_history: List[DreamReport] = []
         
-        # Конфигурация
+        # Конфигурация (из .env или по умолчанию)
         self.config = {
-            "min_idle_minutes": 30,      # Минимальное время простоя
-            "dream_duration": 60,         # Длительность сна (секунды)
-            "episodes_per_dream": 50,     # Эпизодов за сон
-            "connection_threshold": 0.6,  # Порог для связей
-            "emotion_decay_dream": 0.5    # Затухание эмоций во сне
+            "min_idle_minutes": int(os.getenv("DREAM_MIN_IDLE_MINUTES", "30")),
+            "dream_duration": int(os.getenv("DREAM_DURATION", "60")),
+            "episodes_per_dream": int(os.getenv("DREAM_EPISODES_PER_DREAM", "50")),
+            "connection_threshold": float(os.getenv("DREAM_CONNECTION_THRESHOLD", "0.6")),
+            "emotion_decay_dream": float(os.getenv("DREAM_EMOTION_DECAY", "0.5")),
         }
         
         # Флаг активности

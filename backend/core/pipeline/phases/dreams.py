@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 
 from ..base import PipelinePhase
 from ..context import PipelineContext
@@ -7,7 +8,7 @@ from ..models import PhaseResult
 
 logger = logging.getLogger("padplus.pipeline.dreams")
 
-DREAM_INTERVAL = 20
+DREAM_INTERVAL = int(os.getenv("DREAM_INTERVAL", "20"))
 _dialogs_since_dream = 0
 
 
