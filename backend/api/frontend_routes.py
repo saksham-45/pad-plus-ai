@@ -1215,6 +1215,16 @@ async def chat(
                 )
                 response = provider_result.response
                 
+                # Записываем в Meta-Learner (fallback рассматриваем как "simple")
+                try:
+                    from core.xray import get_meta_learner
+                    get_meta_learner().record_outcome("simple", {
+                        "success": True,
+                        "confidence": 0.7,
+                    })
+                except Exception:
+                    pass
+                
                 # Обновляем last_used_at у ключа
                 if request.key_id:
                     get_db_client(current_user).table("user_api_keys").update({
