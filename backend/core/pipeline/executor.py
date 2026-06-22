@@ -623,7 +623,7 @@ class PipelineExecutor:
 
         return result
 
-    def _apply_phase_result(self, phase_name: str, phase_result: PhaseResult, result: PipelineResult):
+    def _apply_phase_result(self, phase_name: str, phase_result: PhaseResult, result: PipelineResult, ctx=None, start_time=None, request_id=None):
         data = phase_result.data or {}
 
         if phase_name == "safety":
