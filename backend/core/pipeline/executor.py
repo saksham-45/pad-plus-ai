@@ -350,7 +350,7 @@ class PipelineExecutor:
                         pr = PhaseResult(success=False, errors=[str(pr)])
                     if pr.data:
                         ctx.context.update(pr.data)
-                    self._apply_phase_result(n, pr, ctx, result, start_time, request_id)
+                    self._apply_phase_result(n, pr, result, ctx, start_time, request_id)
                     if not pr.success:
                         if pr.degradation:
                             self._mark_degraded(pr.degradation.component, pr.degradation.error, pr.degradation.severity, pr.degradation.fallback_applied)
