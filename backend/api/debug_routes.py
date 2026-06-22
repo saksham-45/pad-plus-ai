@@ -336,7 +336,7 @@ async def debug_test_pool():
     # 3 волны по 5 конкурентных запросов = 15 concurrent get_connection
     for wave in range(3):
         wave_errors_before = len(errors)
-        await asyncio.gather(*[_test_conn(f"wave{w+1}_p{p+1}") for p in range(5)])
+        await asyncio.gather(*[_test_conn(f"wave{wave+1}_p{p+1}") for p in range(5)])
         if len(errors) > wave_errors_before:
             break
 
