@@ -4,14 +4,12 @@
 Содержит:
 - GET /api/v1/debug/gigachat — диагностика GigaChat
 - GET /api/v1/debug/key-access — диагностика доступа к ключам
-- POST /api/v1/debug/test-pool — тест пула PostgreSQL (без auth, только DEBUG=true)
 """
 
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional, Dict, Any
 import logging
 import os
-import asyncio
 
 logger = logging.getLogger("padplus.debug")
 
@@ -302,47 +300,3 @@ async def debug_key_access(
 
     return result
 
-
-@router.post("/test-pool")
-async def debug_test_pool():
-    """
-    Тест пула PostgreSQL — запускает конкурентные PgStorage операции
-    без необходимости JWT-токена.
-
-    Проверяет: не возникает ли 'connection pool exhausted' при
-    10 конкурентных запросах к PgStorage.
-    """
-    if not os.getenv("DEBUG", "").lower() in ("true", "1", "yes"):
-        raise HTTPException(status_code=403, detail="Only available when DEBUG=true")
-
-    from core.pg_pool import get_connection, put_connection, get_pool
-
-    pool = get_pool()
-    errors = []
-
-    async def _test_conn(phase: str):
-        conn = None
-        try:
-            conn = get_connection()
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.close()
-        except Exception as e:
-            errors.append(f"{phase}: {e}")
-        finally:
-            if conn is not None:
-                put_connection(conn)
-
-    # 3 волны по 5 конкурентных запросов = 15 concurrent get_connection
-    for wave in range(3):
-        wave_errors_before = len(errors)
-        await asyncio.gather(*[_test_conn(f"wave{wave+1}_p{p+1}") for p in range(5)])
-        if len(errors) > wave_errors_before:
-            break
-
-    return {
-        "success": len(errors) == 0,
-        "errors": errors,
-        "pool_size": pool._size,
-        "pool_maxconn": pool._maxconn,
-    }
