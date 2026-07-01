@@ -615,8 +615,9 @@ async def create_key(
 
     logger.info(f"?? Creating key: provider={data.provider}, model={data.model_preference}, is_default={data.is_default}")
 
-    # Шифруем ключ
-    encrypted_key = encryptor.encrypt(data.api_key)
+    # Шифруем ключ (очищаем от не-ASCII символов)
+    clean_key = data.api_key.strip().encode("ascii", errors="ignore").decode("ascii")
+    encrypted_key = encryptor.encrypt(clean_key)
     logger.info(f"?? Encrypted key length: {len(encrypted_key)}")
 
     # Если is_default=True, сбрасываем остальные
@@ -733,9 +734,10 @@ async def update_key(
     # Собираем только переданные поля
     update_data = {}
     
-    # Если передан новый ключ — шифруем его
+    # Если передан новый ключ — шифруем его (очищаем от не-ASCII символов)
     if data.api_key is not None:
-        encrypted_key = encryptor.encrypt(data.api_key.strip())
+        clean_key = data.api_key.strip().encode("ascii", errors="ignore").decode("ascii")
+        encrypted_key = encryptor.encrypt(clean_key)
         update_data["api_key_encrypted"] = encrypted_key
         logger.info(f"?? Updating key for user {user_id}: key_id={key_id}")
     
@@ -1079,7 +1081,8 @@ async def chat(
         if result.data:
             key_data = result.data[0]
             logger.info(f"? Key found: provider={key_data['provider']}, model={key_data.get('model_preference')}, is_default={key_data.get('is_default')}")
-            api_key = encryptor.decrypt(key_data["api_key_encrypted"])
+            raw_key = encryptor.decrypt(key_data["api_key_encrypted"])
+            api_key = raw_key.strip().encode("ascii", errors="ignore").decode("ascii")
             provider = key_data["provider"]  # ВСЕГДА из БД, не от фронтенда
             model = key_data.get("model_preference") or "auto"
         else:
@@ -1099,7 +1102,8 @@ async def chat(
         if result.data:
             key_data = result.data[0]
             logger.info(f"? Default key found: provider={key_data['provider']}, model={key_data.get('model_preference')}")
-            api_key = encryptor.decrypt(key_data["api_key_encrypted"])
+            raw_key = encryptor.decrypt(key_data["api_key_encrypted"])
+            api_key = raw_key.strip().encode("ascii", errors="ignore").decode("ascii")
             provider = key_data["provider"]  # ВСЕГДА из БД
             model = key_data.get("model_preference") or "auto"
 

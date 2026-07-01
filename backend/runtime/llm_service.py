@@ -229,8 +229,10 @@ class LLMService:
         if max_tokens:
             body["max_tokens"] = max_tokens
 
+        # Очищаем ключ от не-ASCII символов (например неразрывный пробел \xa0)
+        clean_key = api_key.strip().encode("ascii", errors="ignore").decode("ascii")
         headers = {
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {clean_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": os.getenv("FRONTEND_URL", "http://localhost:5174"),
             "X-Title": "PAD+ AI",
