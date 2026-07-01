@@ -92,7 +92,6 @@ class APIKeyResponse(BaseModel):
     created_at: str
     last_used_at: Optional[str] = None
     has_key: bool = True
-    is_system_configured: bool = False  # Для GigaChat системной настройки
 
 
 class ProviderResponse(BaseModel):
@@ -494,13 +493,6 @@ async def providers_status():
 @router.get("/providers", response_model=List[ProviderResponse])
 async def list_providers():
     """Список доступных провайдеров — OpenRouter и GigaChat"""
-    import os
-
-    # Проверка: есть ли глобальный GigaChat ключ в .env
-    gigachat_system_key = os.getenv("GIGACHAT_AUTH_KEY")
-    has_gigachat_system_key = bool(gigachat_system_key and gigachat_system_key.strip())
-
-    # Только реально поддерживаемые провайдеры (HuggingFace удалён)
     providers = [
         {
             "id": "openrouter",
@@ -509,7 +501,6 @@ async def list_providers():
             "free_models": ["gpt-4o-mini", "gemini-2.0-flash", "claude-3-5-haiku"],
             "website": "https://openrouter.ai",
             "is_premium": False,
-            "has_system_key": False
         },
         {
             "id": "gigachat",
@@ -518,7 +509,6 @@ async def list_providers():
             "free_models": ["GigaChat-Plus", "GigaChat-Pro"],
             "website": "https://developers.sber.ru/docs/ru/gigachat",
             "is_premium": False,
-            "has_system_key": has_gigachat_system_key
         }
     ]
     
@@ -542,16 +532,11 @@ async def list_keys(
         offset: Смещение (по умолчанию 0)
         limit: Количество результатов (1-100, по умолчанию 50)
     """
-    import os
     supabase = get_db_client(current_user)
     if not supabase:
         raise HTTPException(status_code=500, detail="БД не подключена")
     
     user_id = current_user["id"]
-    
-    # Проверка: есть ли глобальный GigaChat ключ
-    gigachat_system_key = os.getenv("GIGACHAT_AUTH_KEY")
-    has_gigachat_system_key = bool(gigachat_system_key and gigachat_system_key.strip())
     
     # Ограничиваем limit
     limit = min(max(limit, 1), 100)
@@ -592,30 +577,7 @@ async def list_keys(
                     created_at=key["created_at"],
                     last_used_at=key.get("last_used_at"),
                     has_key=True,
-                    is_system_configured=(key["provider"] == "gigachat" and has_gigachat_system_key)
                 ))
-        
-        # Если нет ключа GigaChat у пользователя, но есть системный - добавляем виртуальный ключ
-        if has_gigachat_system_key:
-            has_user_gigachat = any(k.provider == "gigachat" for k in keys)
-            if not has_user_gigachat:
-                # Default, если нет других ключей ИЛИ ни один ключ не помечен is_default
-                has_any_default = any(k.is_default for k in keys)
-                # Вставляем системный GigaChat ключ в начало списка
-                keys.insert(0, APIKeyResponse(
-                    id="system-gigachat",
-                    provider="gigachat",
-                    provider_display_name="GigaChat (System)",
-                    name="GigaChat (Global Config)",
-                    model_preference="GigaChat-2-Lite",
-                    is_default=not has_any_default,  # Default если нет других дефолтных ключей
-                    is_active=True,
-                    created_at=datetime.now().isoformat(),
-                    last_used_at=None,
-                    has_key=True,
-                    is_system_configured=True
-                ))
-                total += 1
         
         return PaginatedResponse(
             data=keys,
@@ -708,9 +670,6 @@ async def delete_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Удаление API ключа"""
-    if key_id == "system-gigachat":
-        return {"success": True, "message": "Системный ключ GigaChat, удаление не требуется"}
-    
     supabase = get_db_client(current_user)
     if not supabase:
         raise HTTPException(status_code=500, detail="БД не подключена")
@@ -745,10 +704,6 @@ async def set_default_key(
         .eq("user_id", user_id)\
         .execute()
     
-    # Для system-gigachat — не обновляем БД (нет записи), просто сбрасываем остальные
-    if key_id == "system-gigachat":
-        return {"success": True, "message": "Системный ключ GigaChat установлен по умолчанию"}
-    
     # Затем устанавливаем нужный ключ как default
     result = supabase.table("user_api_keys")\
         .update({"is_default": True})\
@@ -774,15 +729,6 @@ async def update_key(
         raise HTTPException(status_code=500, detail="БД не подключена")
     encryptor = get_encryptor()
     user_id = current_user["id"]
-    
-    # Для system-gigachat: обрабатываем только is_default (сброс остальных ключей)
-    if key_id == "system-gigachat":
-        if data.is_default:
-            supabase.table("user_api_keys")\
-                .update({"is_default": False})\
-                .eq("user_id", user_id)\
-                .execute()
-        return {"success": True, "message": "Системный ключ GigaChat, обновление не требуется"}
     
     # Собираем только переданные поля
     update_data = {}
@@ -837,19 +783,6 @@ async def test_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Тестирование сохранённого API ключа"""
-    if key_id == "system-gigachat":
-        gigachat_key = os.getenv("GIGACHAT_AUTH_KEY", "")
-        if not gigachat_key.strip():
-            return TestKeyResponse(success=False, message="GIGACHAT_AUTH_KEY не настроен", model_tested=None)
-        from runtime.provider_manager import get_provider_manager
-        pm = get_provider_manager()
-        result = await pm.test_connection(api_key=gigachat_key, provider="gigachat", model="GigaChat-Pro")
-        return TestKeyResponse(
-            success=result["success"],
-            message=result["message"],
-            model_tested=result.get("model_tested", "GigaChat-Pro"),
-        )
-    
     supabase = get_db_client(current_user)
     if not supabase:
         raise HTTPException(status_code=500, detail="БД не подключена")
@@ -974,18 +907,6 @@ async def get_keys_status_batch(
         
         # Тестируем каждый ключ (без блокировки, параллельно)
         for key in result.data:
-            if key["id"] == "system-gigachat":
-                # Системный ключ — всегда успешен
-                keys_status.append({
-                    "key_id": "system-gigachat",
-                    "provider": key["provider"],
-                    "status": "success",
-                    "message": "Системный ключ",
-                    "last_checked": datetime.now().isoformat(),
-                    "cached": False
-                })
-                continue
-            
             try:
                 api_key = encryptor.decrypt(key["api_key_encrypted"])
                 provider = key["provider"]
@@ -1055,15 +976,6 @@ async def refresh_key_status(
     from core.encryption import get_encryptor
 
     user_id = current_user["id"]
-    
-    if key_id == "system-gigachat":
-        return {
-            "key_id": key_id,
-            "provider": "gigachat",
-            "status": "success",
-            "message": "Системный ключ",
-            "last_checked": datetime.now().isoformat()
-        }
     
     supabase = get_db_client(current_user)
     if not supabase:
@@ -1155,16 +1067,7 @@ async def chat(
 
     logger.info(f"?? Chat request: key_id={request.key_id}, model={request.model}, provider={request.provider}")
 
-    if request.key_id == "system-gigachat":
-        import os
-        system_key = os.getenv("GIGACHAT_AUTH_KEY", "").strip()
-        if not system_key:
-            raise HTTPException(status_code=400, detail="Системный ключ GigaChat не настроен (GIGACHAT_AUTH_KEY)")
-        api_key = system_key
-        provider = "gigachat"
-        model = request.model or "GigaChat-2-Lite"
-        logger.info(f"? Using system-gigachat key, model={model}")
-    elif request.key_id:
+    if request.key_id:
         # Конкретный ключ
         logger.info(f"?? Looking up key_id: {request.key_id}")
         result = supabase.table("user_api_keys")\
@@ -1201,21 +1104,12 @@ async def chat(
             model = key_data.get("model_preference") or "auto"
 
     if not api_key:
-        # Fallback на системный GigaChat
-        import os
-        system_key = os.getenv("GIGACHAT_AUTH_KEY", "").strip()
-        if system_key:
-            logger.info("? Falling back to system-gigachat key")
-            api_key = system_key
-            provider = "gigachat"
-            model = request.model or "GigaChat-2-Lite"
-        else:
-            # Нет ключа у пользователя — ошибка!
-            logger.error("? No API key found for user")
-            raise HTTPException(
-                status_code=400,
-                detail="API ключ не настроен. Добавьте ключ в настройках."
-            )
+        # Нет ключа у пользователя — ошибка!
+        logger.error("? No API key found for user")
+        raise HTTPException(
+            status_code=400,
+            detail="API ключ не настроен. Добавьте ключ в настройках."
+        )
 
     logger.info(f"?? Using: provider={provider}, model={model}")
 
@@ -1274,8 +1168,8 @@ async def chat(
                 except Exception:
                     pass
                 
-                # Обновляем last_used_at у ключа (не для system-gigachat)
-                if request.key_id and request.key_id != "system-gigachat":
+                # Обновляем last_used_at у ключа
+                if request.key_id:
                     get_db_client(current_user).table("user_api_keys").update({
                         "last_used_at": datetime.now().isoformat()
                     }).eq("id", request.key_id).execute()
@@ -1297,8 +1191,8 @@ async def chat(
                     } if provider_result.fallback_used else None,
                 )
             
-            # Обновляем last_used_at у ключа (не для system-gigachat)
-            if request.key_id and request.key_id != "system-gigachat":
+            # Обновляем last_used_at у ключа
+            if request.key_id:
                 get_db_client(current_user).table("user_api_keys").update({
                     "last_used_at": datetime.now().isoformat()
                 }).eq("id", request.key_id).execute()

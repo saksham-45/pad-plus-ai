@@ -303,10 +303,6 @@ class ProviderManager:
 
     def get_available_providers(self) -> List[Dict[str, Any]]:
         """Возвращает список доступных провайдеров с их статусом"""
-        import os
-        
-        gigachat_key = bool(os.getenv("GIGACHAT_AUTH_KEY", "").strip())
-        
         return [
             {
                 "id": "openrouter",
@@ -317,8 +313,8 @@ class ProviderManager:
             {
                 "id": "gigachat",
                 "name": "GigaChat",
-                "has_key": gigachat_key,
-                "is_system": gigachat_key,
+                "has_key": False,
+                "is_system": False,
             },
         ]
 
@@ -328,12 +324,7 @@ class ProviderManager:
 
     def has_active_providers(self) -> bool:
         """Проверяет, доступен ли хотя бы один провайдер."""
-        try:
-            import os
-            gigachat_key = bool(os.getenv("GIGACHAT_AUTH_KEY", "").strip())
-            return gigachat_key
-        except Exception:
-            return False
+        return True
 
     def _get_gigachat_key(self) -> Optional[str]:
         """Получает системный ключ GigaChat из .env"""

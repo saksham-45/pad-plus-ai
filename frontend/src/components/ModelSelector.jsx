@@ -110,9 +110,9 @@ export function ModelSelector({ value, onChange, keys = [] }) {
     })
     .filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
 
-  // Приоритет: ключи пользователя → API → пустой список (без ключей fallback-модели бесполезны)
-  const hasConfiguredKeys = keys.some(k => k.is_active || k.is_system_configured);
-  const availableModels = dbModels.length > 0 ? dbModels : (apiModels.length > 0 ? apiModels : (hasConfiguredKeys ? fallbackModels : []));
+  // Приоритет: ключи пользователя → API → пустой список
+  const hasActiveKeys = keys.some(k => k.is_active);
+  const availableModels = dbModels.length > 0 ? dbModels : (apiModels.length > 0 ? apiModels : (hasActiveKeys ? fallbackModels : []));
 
   // Фильтруем модели
   const filteredModels = availableModels.filter(model => {
