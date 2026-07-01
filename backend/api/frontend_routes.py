@@ -766,6 +766,9 @@ async def update_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Обновление API ключа (модель, имя, сам ключ)"""
+    if key_id == "system-gigachat":
+        return {"success": True, "message": "Системный ключ GigaChat, обновление не требуется"}
+    
     supabase = get_db_client(current_user)
     if not supabase:
         raise HTTPException(status_code=500, detail="БД не подключена")
@@ -825,6 +828,19 @@ async def test_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Тестирование сохранённого API ключа"""
+    if key_id == "system-gigachat":
+        gigachat_key = os.getenv("GIGACHAT_AUTH_KEY", "")
+        if not gigachat_key.strip():
+            return TestKeyResponse(success=False, message="GIGACHAT_AUTH_KEY не настроен", model_tested=None)
+        from runtime.provider_manager import get_provider_manager
+        pm = get_provider_manager()
+        result = await pm.test_connection(api_key=gigachat_key, provider="gigachat", model="GigaChat-Pro")
+        return TestKeyResponse(
+            success=result["success"],
+            message=result["message"],
+            model_tested=result.get("model_tested", "GigaChat-Pro"),
+        )
+    
     supabase = get_db_client(current_user)
     if not supabase:
         raise HTTPException(status_code=500, detail="БД не подключена")
