@@ -706,6 +706,9 @@ async def delete_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Удаление API ключа"""
+    if key_id == "system-gigachat":
+        return {"success": True, "message": "Системный ключ GigaChat, удаление не требуется"}
+    
     supabase = get_db_client(current_user)
     if not supabase:
         raise HTTPException(status_code=500, detail="БД не подключена")
