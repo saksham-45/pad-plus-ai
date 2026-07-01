@@ -599,6 +599,8 @@ async def list_keys(
         if has_gigachat_system_key:
             has_user_gigachat = any(k.provider == "gigachat" for k in keys)
             if not has_user_gigachat:
+                # Default, если нет других ключей ИЛИ ни один ключ не помечен is_default
+                has_any_default = any(k.is_default for k in keys)
                 # Вставляем системный GigaChat ключ в начало списка
                 keys.insert(0, APIKeyResponse(
                     id="system-gigachat",
@@ -606,7 +608,7 @@ async def list_keys(
                     provider_display_name="GigaChat (System)",
                     name="GigaChat (Global Config)",
                     model_preference="GigaChat-2-Lite",
-                    is_default=total == 0,  # Default если нет других ключей
+                    is_default=not has_any_default,  # Default если нет других дефолтных ключей
                     is_active=True,
                     created_at=datetime.now().isoformat(),
                     last_used_at=None,
@@ -732,19 +734,20 @@ async def set_default_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Установка ключа по умолчанию"""
-    if key_id == "system-gigachat":
-        return {"success": True, "message": "Системный ключ GigaChat уже активен"}
-    
     supabase = get_db_client(current_user)
     if not supabase:
         raise HTTPException(status_code=500, detail="БД не подключена")
     user_id = current_user["id"]
     
-    # Сначала сбрасываем все ключи пользователя
+    # Сначала сбрасываем is_default у всех ключей пользователя
     supabase.table("user_api_keys")\
         .update({"is_default": False})\
         .eq("user_id", user_id)\
         .execute()
+    
+    # Для system-gigachat — не обновляем БД (нет записи), просто сбрасываем остальные
+    if key_id == "system-gigachat":
+        return {"success": True, "message": "Системный ключ GigaChat установлен по умолчанию"}
     
     # Затем устанавливаем нужный ключ как default
     result = supabase.table("user_api_keys")\
@@ -766,14 +769,20 @@ async def update_key(
     current_user: dict = Depends(get_current_user)
 ):
     """Обновление API ключа (модель, имя, сам ключ)"""
-    if key_id == "system-gigachat":
-        return {"success": True, "message": "Системный ключ GigaChat, обновление не требуется"}
-    
     supabase = get_db_client(current_user)
     if not supabase:
         raise HTTPException(status_code=500, detail="БД не подключена")
     encryptor = get_encryptor()
     user_id = current_user["id"]
+    
+    # Для system-gigachat: обрабатываем только is_default (сброс остальных ключей)
+    if key_id == "system-gigachat":
+        if data.is_default:
+            supabase.table("user_api_keys")\
+                .update({"is_default": False})\
+                .eq("user_id", user_id)\
+                .execute()
+        return {"success": True, "message": "Системный ключ GigaChat, обновление не требуется"}
     
     # Собираем только переданные поля
     update_data = {}
