@@ -28,7 +28,7 @@ import httpx
 
 logger = logging.getLogger("padplus")
 
-from core.supabase_client import get_db_client, get_supabase
+from core.supabase_client import get_db_client, get_supabase, get_supabase_service
 from core.auth_manager import get_current_user_safe as get_current_user
 from core.document_processor import process_document
 import asyncio
@@ -81,7 +81,7 @@ async def upload_document(
     Поддерживаемые форматы: PDF, DOCX, TXT, MD
     Максимальный размер: 50MB
     """
-    supabase = get_supabase()
+    supabase = get_supabase_service()
     user_id = current_user["id"]
     
     # Проверка типа файла (по расширению если MIME type не определён)
@@ -778,7 +778,7 @@ async def upload_from_url(
     if len(content) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Файл слишком большой (макс 50MB)")
 
-    supabase = get_supabase()
+    supabase = get_supabase_service()
     db = get_db_client(current_user)
     user_id = current_user["id"]
     collection_id = data.get("collection_id")

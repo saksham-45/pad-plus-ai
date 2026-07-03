@@ -91,6 +91,12 @@ export const apiFetch = async (url, options = {}) => {
     headers,
   });
 
+  // Если сервер вернул новый токен — сохраняем
+  const newToken = response.headers.get('X-New-Access-Token');
+  if (newToken) {
+    setTokens(newToken, getRefreshToken());
+  }
+
   if (response.status === 401) {
     if (!isRefreshing) {
       isRefreshing = true;

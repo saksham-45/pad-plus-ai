@@ -428,8 +428,18 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Type", "Set-Cookie"],
+    expose_headers=["Content-Type", "Set-Cookie", "X-New-Access-Token"],
 )
+
+
+# Auth Refresh Middleware — пробрасывает новый токен клиенту
+@app.middleware("http")
+async def auth_refresh_middleware(request, call_next):
+    response = await call_next(request)
+    new_token = getattr(request.state, 'new_access_token', None)
+    if new_token:
+        response.headers['X-New-Access-Token'] = new_token
+    return response
 
 
 # Подключение роутов (отложенный импорт для ускорения старта)
