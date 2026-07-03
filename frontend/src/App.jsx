@@ -8,6 +8,7 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { RightSidebar } from './components/RightSidebar';
 import { Button } from './components/ui/Button';
 import { NotificationProvider } from './hooks/useNotifications';
+import { apiFetch } from './services/api';
 
 const InstructionsPage = lazy(() => import('./pages/InstructionsPage'));
 const ProvidersPage = lazy(() => import('./pages/ProvidersPage'));
@@ -135,38 +136,17 @@ function App() {
     try {
       const token = localStorage.getItem('access_token');
       if (!token) {
-        // Нет токена - пользователь не аутентифицирован
         setKeys([]);
         return;
       }
 
-      const refreshToken = localStorage.getItem('refresh_token');
-      
-      const headers = { 
-        'Authorization': `Bearer ${token}`
-      };
-      if (refreshToken) {
-        headers['X-Refresh-Token'] = refreshToken;
-      }
-      
-      const response = await fetch('/api/v1/keys?offset=0&limit=100', {
-        headers,
-      });
-
-      // Обработка 401 ошибки - токен невалиден или истек
-      if (response.status === 401) {
-        console.warn('Токен невалиден, выполнен выход из системы');
-        handleLogout();
-        return;
-      }
+      const response = await apiFetch('/api/v1/keys?offset=0&limit=100');
 
       if (response.ok) {
         const result = await response.json();
-        // Обработка пагинации: result.data или result (если старый формат)
         const keysData = result.data || result;
         setKeys(Array.isArray(keysData) ? keysData : []);
 
-        // Выбираем модель по умолчанию
         const defaultKey = (keysData || []).find(k => k.is_default);
         if (defaultKey && !selectedModel) {
           setSelectedModel({
@@ -181,7 +161,6 @@ function App() {
           });
         }
       } else {
-        // Другие ошибки - просто устанавливаем пустой список
         console.warn('Не удалось загрузить ключи, статус:', response.status);
         setKeys([]);
       }
