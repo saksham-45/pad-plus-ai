@@ -603,7 +603,7 @@ def upgrade() -> None:
                 WHERE indexname = 'idx_document_chunks_embedding'
             ) THEN
                 CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding ON document_chunks
-                    USING ivf (embedding vector_cosine_ops) WITH (lists = 100);
+                    USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
             END IF;
         END $$;
     """)
