@@ -227,6 +227,34 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"{__name__} error: {e}")
         collector.subscribe(_forward_xray_to_ws)
         logger.info("✅ X-Ray Broadcaster запущен + мост TraceCollector→WS")
+
+        # Внедряем WS manager в healer_routes для broadcast из bridge cycle
+        try:
+            from backend.api.healer_routes import set_ws_manager as set_healer_ws
+            set_healer_ws(manager)
+            logger.info("✅ WS manager внедрён в healer_routes")
+        except Exception as e:
+            logger.warning(f"⚠️ WS manager не внедрён: {e}")
+
+        # Подключение HealerBridge к XRayTraceCollector (события: session_started/event_recorded/session_completed)
+        try:
+            from backend.integration import get_healer_bridge
+            bridge = get_healer_bridge(mode=os.getenv("HEALER_MODE", "monitor"))
+            bridge.start(collector)
+            logger.info("✅ HealerBridge подключён к TraceCollector")
+        except Exception as e:
+            logger.warning(f"⚠️ HealerBridge не подключён: {e}")
+
+        # Подключение HealerListener к пайплайн-событиям через core TraceCollector
+        try:
+            from healing.listener import get_healer
+            from core.trace_collector import trace_collector as core_collector
+            healer = get_healer()
+            healer.subscribe(lambda: core_collector)
+            logger.info("✅ HealerListener подписан на core TraceCollector")
+        except Exception as e:
+            logger.warning(f"⚠️ HealerListener не подключён: {e}")
+
     except Exception as e:
         logger.warning(f"⚠️ X-Ray Broadcaster не запустился: {e}")
 

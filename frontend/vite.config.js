@@ -34,7 +34,31 @@ export default defineConfig({
             proxyReq.setHeader('Connection', 'Upgrade');
           });
         }
+      },
+
+      // X-Ray WebSocket: FastAPI endpoint is /api/v1/xray/ws
+      '/api/v1/xray/ws': {
+        target: 'ws://127.0.0.1:8080',
+        ws: true,
+        changeOrigin: true,
+        secure: false,
+        timeout: 300000,
+        proxyTimeout: 300000,
+        followRedirects: true,
+        // Без явного rewrite: пусть прокси использует тот же путь (/api/v1/xray/ws)
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('🔌 X-Ray WS proxy error:', err.message);
+          });
+          proxy.on('proxyReqWs', (proxyReq, req, socket, options, head) => {
+            socket.on('error', (err) => {
+              console.log('🔌 X-Ray WS socket error:', err.message);
+            });
+            proxyReq.setHeader('Connection', 'Upgrade');
+          });
+        }
       }
+
     },
     hmr: {
       overlay: false,

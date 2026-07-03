@@ -3,6 +3,9 @@ import { XRayPipeline } from '../components/xray/XRayPipeline';
 import { ThoughtStream } from '../components/xray/ThoughtStream';
 import { EmotionPanel } from '../components/xray/EmotionPanel';
 import { DecisionLog } from '../components/xray/DecisionLog';
+import { TraceHistory } from '../components/xray/TraceHistory';
+import { TraceStats } from '../components/xray/TraceStats';
+import { XRayMeta } from '../components/xray/XRayMeta';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { apiFetch } from '../services/api';
 
@@ -42,16 +45,30 @@ export default function XRayPage() {
   }, []);
 
   useEffect(() => {
+    // IMPORTANT:
+    // Используем относительный URL, чтобы Vite проксирал WebSocket на backend (127.0.0.1:8080).
+    // Иначе при dev на 5174 браузер пытается открыть ws на 5174 и сервер закрывает соединение.
     const token = localStorage.getItem('auth_token');
-    const xrayProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = new URL(`${xrayProtocol}//${window.location.host}/api/v1/xray/ws`);
-    if (token) wsUrl.searchParams.set('token', token);
-    const ws = new WebSocket(wsUrl.toString());
+
+    // Строго проксируем через Vite: клиент подключается к origin текущей страницы (5174),
+    // а Vite proxy проксирует WS на backend (8080).
+    const wsUrl = new URL('/api/v1/xray/ws', window.location.origin);
+
+    if (token) {
+      wsUrl.searchParams.set('token', token);
+    }
+
+    console.log('🔌 X-Ray WS connecting to:', wsUrl.toString());
+
+    const ws = new WebSocket(wsUrl.toString(), []);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setConnected(true);
-      ws.send(JSON.stringify({ type: 'subscribe', channels: ['trace', 'thought', 'pipeline', 'emotion', 'decision', 'all'] }));
+      ws.send(JSON.stringify({
+        type: 'subscribe',
+        channels: ['trace', 'thought', 'pipeline', 'emotion', 'decision', 'all']
+      }));
     };
 
     ws.onmessage = (event) => {
@@ -63,10 +80,29 @@ export default function XRayPage() {
       }
     };
 
-    ws.onclose = () => setConnected(false);
+    ws.onerror = (err) => {
+      console.warn('X-Ray WS error:', err);
+    };
 
-    return () => { ws.close(); wsRef.current = null; };
+    ws.onclose = (event) => {
+      // Логируем причины закрытия (код/причина важны для диагностики)
+      console.warn('X-Ray WS closed:', event?.code, event?.reason);
+      setConnected(false);
+    };
+
+    return () => {
+      // Мягкий cleanup: не закрываем соединение во время unmount, чтобы не ловить race-condition в DEV/StrictMode.
+      // Дать сокету завершить handshake/подписку.
+      try {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+      } catch {}
+      wsRef.current = null;
+    };
   }, []);
+
 
   // Обработка сообщений
   const handleMessage = (message) => {
@@ -343,8 +379,17 @@ export default function XRayPage() {
               </div>
             )}
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        {/* Trace History */}
+        <TraceHistory wsTraces={[]} />
+
+        {/* X-Ray Stats */}
+        <TraceStats />
+
+        {/* X-Ray Meta */}
+        <XRayMeta connected={connected} wsStats={{ messagesSent: thoughts.length + decisions.length, errors: pipelineError ? 1 : 0 }} />
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
               <StatCard
                 label="Стадии завершено"
                 value={completedStages.length}

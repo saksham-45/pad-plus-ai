@@ -1,19 +1,26 @@
-# 📚 Документация PAD+ AI
+# Документация PAD+ AI
 
-## Актуальные документы (10 файлов)
+## Актуальные документы (11 файлов)
 
 | Документ | Описание |
 |----------|----------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Архитектура системы, Pipeline, Память, Эмоции |
 | [STABILIZATION_PLAN.md](STABILIZATION_PLAN.md) | Текущий план стабилизации (v2.1) |
 | [API.md](API.md) | API эндпоинты и их использование |
-| [XRAY.md](XRAY.md) | X-RayBrain — система полной наблюдаемости |
-| [XRAY_GUIDE.md](XRAY_GUIDE.md) | Руководство по X-Ray |
+| [XRAY.md](XRAY.md) | X-Ray — система полной наблюдаемости AI |
+| [XRAY_GUIDE.md](XRAY_GUIDE.md) | Руководство по X-Ray и самодиагностике |
+| [HEALER.md](HEALER.md) | HEALER — система самодиагностики и самовосстановления |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Руководство по деплою на production |
 | [AUDIT_REPORT.md](AUDIT_REPORT.md) | Аудит безопасности и качества кода |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | Структура проекта и файлов |
 | [RLS_POLICIES.md](RLS_POLICIES.md) | RLS политики базы данных |
 | `README.md` | Этот файл |
+
+## Обновления документации (2026-07-03)
+
+- **XRAY.md** — полностью переписан: актуальная архитектура, все компоненты (XRayTracer, XRayTraceCollector, TraceContext, Broadcaster, CognitiveState, ThoughtStream), полный цикл запроса, все API endpoints, WebSocket события, frontend компоненты, тесты
+- **XRAY_GUIDE.md** — обновлён: актуальная архитектура, HEALER тесты, статус интеграции, правила разработчика
+- **HEALER.md** — **НОВЫЙ**: полная документация HEALER: 5 детекторов, DiagnosticReport, ReflectionLoop, HealingChangesStore, 3 режима, API, WS, фронт, поток данных
 
 ## Устаревшая документация
 

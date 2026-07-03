@@ -1,9 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { HealerTracePanel } from '../components/xray/HealerTracePanel';
+import { HealerResults } from '../components/healer/HealerResults';
+import { HealerReflection } from '../components/healer/HealerReflection';
+import { HealerHistory } from '../components/healer/HealerHistory';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { apiFetch } from '../services/api';
+import { HealerReflectionPanel } from './HealerReflectionPanel';
 
-export default function HealerPage() {
+
+function HealerPage() {
   const [bridgeStatus, setBridgeStatus] = useState({ status: 'ok', bridge: 'not_available' });
   const [bridgeMode, setBridgeMode] = useState('monitor');
   const [cycles, setCycles] = useState([]);
@@ -239,6 +244,16 @@ export default function HealerPage() {
           onRefreshReports={refreshReports}
         />
 
+        {/* New components in a grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          <HealerResults reports={latestReports} onRefresh={refreshReports} />
+          <HealerHistory cycles={cycles} />
+        </div>
+
+        {/* Healer Reflection */}
+        <HealerReflectionPanel />
+
+
         {/* Footer */}
         <div className="mt-6 text-center text-xs text-gray-500">
           HEALER Bridge v0.1 — Модуль самодиагностики PAD+ AI
@@ -248,4 +263,5 @@ export default function HealerPage() {
   );
 }
 
+export default HealerPage;
 

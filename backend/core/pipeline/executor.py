@@ -352,6 +352,18 @@ class PipelineExecutor:
                     if pr.data:
                         ctx.context.update(pr.data)
                     self._apply_phase_result(n, pr, result, ctx, start_time, request_id)
+                    # X-Ray: синхронная запись фазы (даже для параллельной группы)
+                    try:
+                        from core.xray import get_trace_collector, get_xray_broadcaster
+                        from core.xray.trace_collector import TraceStage
+                        stage = TraceStage(_stage_map.get(n, "retrieve"))
+                        phase_pdur = (time.perf_counter() - start_time) * 1000
+                        phase_pstatus = "error" if not pr.success else "success"
+                        phase_perror = pr.errors[0] if pr.errors else None
+                        tc = get_trace_collector()
+                        tc.record_event(request_id, stage, {**(pr.data or {}), "phase": n}, phase_pdur, phase_pstatus, phase_perror)
+                    except Exception as e:
+                        logger.warning(f"{__name__} error: {e}")
                     if not pr.success:
                         if pr.degradation:
                             self._mark_degraded(pr.degradation.component, pr.degradation.error, pr.degradation.severity, pr.degradation.fallback_applied)
@@ -576,6 +588,28 @@ class PipelineExecutor:
             })
         except Exception as e:
             logger.warning(f"X-Ray session complete error: {e}")
+
+        # X-Ray: сохраняем latest результат для /api/v1/xray/latest
+        try:
+            from api.xray_routes import set_latest_pipeline_result
+            set_latest_pipeline_result({
+                "pipeline": {
+                    "strategy": result.strategy,
+                    "intent": result.intent,
+                    "confidence": result.confidence,
+                    "truth_confidence": result.truth_confidence or 0.0,
+                    "execution_time_ms": result.execution_time_ms,
+                    "success": result.success,
+                },
+                "provider": result.provider,
+                "model": result.sources.get("llm", {}).get("model", ""),
+                "user_message": user_message[:200],
+                "session_id": session_id,
+                "request_id": request_id,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            })
+        except Exception as e:
+            logger.warning(f"X-Ray latest result error: {e}")
 
         # Meta-Learner: запись результата стратегии
         try:

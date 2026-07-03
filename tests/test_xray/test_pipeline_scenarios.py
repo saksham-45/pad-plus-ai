@@ -187,8 +187,9 @@ async def test_pipeline_degradation_continues(base_mocks, trace_events):
     executor = PipelineExecutor()
 
     # Ломаем knowledge_graph (не критичный)
+    # Используем сообщение, которое триггерит reasoning стратегию (все фазы)
     with patch("knowledge.graph.get_knowledge_graph", side_effect=Exception("KG недоступен")):
-        result = await executor.execute(user_message="тест деградации")
+        result = await executor.execute(user_message="Почему система падает при деградации? Объясни подробно.")
 
     assert result.success
     assert result.execution_time_ms > 0

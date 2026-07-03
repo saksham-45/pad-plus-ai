@@ -197,6 +197,24 @@ async def run_bridge_cycle():
         "timestamp": datetime.now().isoformat(),
     })
 
+    # Broadcast рефлексии после цикла
+    try:
+        from healing.reflection_loop import reflect
+        cycle_data = {
+            "status": result.get("status") if isinstance(result, dict) else "done",
+            "reports": result.get("reports") if isinstance(result, dict) else [],
+            "timestamp": datetime.now().isoformat(),
+            "duration_ms": result.get("duration_ms", 0) if isinstance(result, dict) else 0,
+        }
+        reflection = reflect([cycle_data])
+        broadcast_ws({
+            "type": "healer_bridge_reflection",
+            "data": reflection,
+            "timestamp": datetime.now().isoformat(),
+        })
+    except Exception as e:
+        logger.debug("Reflection broadcast skipped: %s", e)
+
     return {"status": "ok", "cycle": result}
 
 
@@ -224,6 +242,64 @@ async def get_latest_reports(min_severity: str = "info"):
     bridge = get_healer_bridge()
     reports = bridge.get_last_reports(min_severity)
     return {"status": "ok", "count": len(reports), "reports": reports}
+
+
+@router.get("/bridge/reflection/latest")
+async def get_latest_reflection():
+    """Последняя рефлексия HEALER.
+
+    В текущей версии ReflectionLoop возвращает агрегированные данные (stats/learnings/changes)
+    на основании внутренних циклов диагностики.
+    """
+    # В bridge пока нет источника “latest reflection”, поэтому fallback:
+    # запускаем diagnostics с auto_reflect и отдаём learnings/changes.
+    try:
+        reports = run_diagnostics(session_id="", auto_reflect=True, event_callback=None)
+    except Exception:
+        reports = []
+
+    # ReflectionLoop считает агрегированную рефлексию на основании cycles.
+    # Сейчас run_diagnostics возвращает только reports, поэтому строим минимальный cycle.
+    try:
+        from healing.reflection_loop import reflect
+
+        cycle = {
+            "status": "success",
+            "reports": [r.to_dict() for r in reports],
+            "timestamp": datetime.now().isoformat(),
+            "duration_ms": 0,
+        }
+        reflection = reflect([cycle])
+    except Exception:
+        reflection = {"learnings": [], "changes": [], "stats": {"total_cycles": 1}}
+
+    return {"status": "ok", "reflection": reflection}
+
+
+# === Changes & Rollback ===
+
+
+@router.get("/bridge/changes")
+async def get_changes(status: str = "applied"):
+    """Список применённых/откаченных изменений HEALER."""
+    try:
+        from healing.changes_store import get_changes_store
+        store = get_changes_store()
+        return {"status": "ok", "changes": store.get_by_status(status), "total": len(store.get_all())}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@router.post("/bridge/rollback/{patch_id}")
+async def rollback_patch(patch_id: str):
+    """Откатить применённый патч HEALER по patch_id."""
+    try:
+        from healing.changes_store import get_changes_store
+        store = get_changes_store()
+        success = store.rollback(patch_id)
+        return {"status": "ok" if success else "error", "rolled_back": success}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 # === AutoCycle Scheduler ===

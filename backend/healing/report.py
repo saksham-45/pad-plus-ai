@@ -29,7 +29,11 @@ class DiagnosticReport:
     category: ReportCategory
     message: str = ""
     recommendation: str = ""
+    status: str = "detected"
+    old_value: Any = None
+    new_value: Any = None
     details: dict[str, Any] = field(default_factory=dict)
+    timestamp: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -38,5 +42,9 @@ class DiagnosticReport:
             "category": self.category.value,
             "message": self.message,
             "recommendation": self.recommendation,
+            "status": self.status,
+            "old_value": self.old_value,
+            "new_value": self.new_value,
             "details": self.details,
+            "timestamp": self.timestamp,
         }

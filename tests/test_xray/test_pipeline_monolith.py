@@ -108,7 +108,7 @@ async def test_pipeline_full_trace(mock_ext_deps):
 
     # Выполняем pipeline
     result = await executor.execute(
-        user_message="Привет!",
+        user_message="Почему PAD+ использует когнитивную архитектуру? Объясни подробно и проанализируй все компоненты.",
         api_key="test-key",
         provider="test",
     )
@@ -159,9 +159,9 @@ async def test_pipeline_full_trace(mock_ext_deps):
     expected_phases = [
         "safety", "intent", "rag", "knowledge_graph",
         "episodic", "semantic", "emotion", "persona", "roots",
-        "generate", "truth_loop", "save_episode", "emotion_update",
-        "persona_evolution", "events_broadcast", "health",
-        "reflection", "dreams", "metrics", "response_guard",
+        "identity", "generate", "truth_loop", "save_episode",
+        "emotion_update", "persona_evolution", "events_broadcast",
+        "health", "reflection", "dreams", "metrics", "response_guard",
     ]
 
     for phase in expected_phases:
