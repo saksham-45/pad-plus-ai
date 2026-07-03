@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: PAD+ AI Документация
+    url: https://pad-plus-ai.onrender.com
+    about: Официальная документация проекта
+  - name: X-Ray Guide
+    url: https://github.com/Ovladimirovich/pad-plus-ai/blob/main/docs/XRAY_GUIDE.md
+    about: Руководство по системе наблюдаемости X-Ray
