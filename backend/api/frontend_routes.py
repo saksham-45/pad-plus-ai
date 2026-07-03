@@ -1213,24 +1213,39 @@ async def chat(
                 final_model = model
             
             # === СОХРАНЕНИЕ ДИАЛОГА И СООБЩЕНИЙ ===
-            dialog_id = request.dialog_id
+            # SECURITY (fix #7): only ever write to a dialog the caller owns.
+            # Previously the message rows were inserted with a client-supplied
+            # dialog_id via the service-role client (get_supabase_service), which
+            # bypasses RLS — letting a user write into another user's dialog
+            # (IDOR / cross-user content & prompt injection). We now verify
+            # ownership and write under the user's own RLS context.
+            dialog_id = None
 
             try:
                 if request.dialog_id:
-                    # Обновляем существующий диалог
-                    try:
-                        current = supabase.table("dialogs").select("message_count").eq("id", dialog_id).execute()
-                        current_count = current.data[0].get("message_count", 0) if current.data else 0
+                    # Обновляем существующий диалог — только если он принадлежит пользователю
+                    owned = supabase.table("dialogs")\
+                        .select("message_count")\
+                        .eq("id", request.dialog_id)\
+                        .eq("user_id", user_id)\
+                        .execute()
+
+                    if owned.data:
+                        dialog_id = request.dialog_id
+                        current_count = owned.data[0].get("message_count", 0) or 0
                         supabase.table("dialogs").update({
                             "message_count": current_count + 2,
                             "last_message_at": datetime.now().isoformat()
-                        }).eq("id", dialog_id).execute()
-                    except Exception as count_err:
-                        supabase.table("dialogs").update({
-                            "last_message_at": datetime.now().isoformat()
-                        }).eq("id", dialog_id).execute()
-                else:
-                    # Создаем новый диалог
+                        }).eq("id", dialog_id).eq("user_id", user_id).execute()
+                    else:
+                        # dialog_id передан, но не принадлежит пользователю —
+                        # НЕ пишем в чужой диалог, создаём новый ниже.
+                        logger.warning(
+                            f"dialog_id {request.dialog_id} not owned by user {user_id}; creating a new dialog"
+                        )
+
+                if not dialog_id:
+                    # Создаём новый диалог, принадлежащий пользователю
                     dialog_result = supabase.table("dialogs").insert({
                         "user_id": user_id,
                         "title": request.text[:100],
@@ -1242,8 +1257,10 @@ async def chat(
                         dialog_id = dialog_result.data[0]["id"]
 
                 if dialog_id:
-                    svc = get_supabase_service()
-                    svc.table("messages").insert({
+                    # Пишем в контексте пользователя (RLS enforced), а не через
+                    # service-role клиент. dialog_id гарантированно принадлежит
+                    # текущему пользователю по проверкам выше.
+                    supabase.table("messages").insert({
                         "dialog_id": dialog_id,
                         "role": "user",
                         "content": request.text,
@@ -1252,7 +1269,7 @@ async def chat(
                         "created_at": datetime.now().isoformat()
                     }).execute()
 
-                    svc.table("messages").insert({
+                    supabase.table("messages").insert({
                         "dialog_id": dialog_id,
                         "role": "assistant",
                         "content": result.response if hasattr(result, 'response') else str(result),
