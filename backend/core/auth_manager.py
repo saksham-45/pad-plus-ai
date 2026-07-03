@@ -168,9 +168,9 @@ def get_auth_manager() -> AuthManager:
 # ============================================================================
 
 async def get_current_user_safe(
-    request: Request = None,
     authorization: Optional[str] = Header(None),
-    x_refresh_token: Optional[str] = Header(None, alias="X-Refresh-Token")
+    x_refresh_token: Optional[str] = Header(None, alias="X-Refresh-Token"),
+    request: Optional[Request] = None,
 ) -> Dict[str, Any]:
     """
     Улучшенная версия get_current_user с обработкой refresh_token
